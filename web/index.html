@@ -1,0 +1,726 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Neuro Labs Explorer — research graph</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="topbar">
+    <h1><span class="brand">◧</span> Neuro Labs Explorer</h1>
+    <nav>
+      <a href="index.html" class="active">Graph</a>
+      <a href="search.html">Search</a>
+    </nav>
+    <div class="spacer"></div>
+    <div class="stats" id="stats">loading…</div>
+  </div>
+
+  <div class="layout">
+    <aside class="sidebar faceted">
+      <div class="facets">
+        <div class="group">
+          <h3>Search <span class="clear" id="clearAll">clear all</span></h3>
+          <input class="search-input" id="q" placeholder="Name, topic, institution, paper title…" autocomplete="off" />
+        </div>
+        <div class="group">
+          <h3>Methods <span class="clear" data-clear="methods">clear</span></h3>
+          <div class="facet-chips" id="methodChips"></div>
+        </div>
+        <div class="group">
+          <h3>Model systems <span class="clear" data-clear="organisms">clear</span></h3>
+          <div class="facet-chips" id="organismChips"></div>
+          <label class="check" style="margin-top:6px"><input type="checkbox" id="requireAll" /> Require all selected tags</label>
+        </div>
+        <div class="group">
+          <h3>Place</h3>
+          <div class="row2">
+            <select id="ccSel"><option value="">Any country</option></select>
+            <select id="citySel" disabled><option value="">Any city</option></select>
+          </div>
+        </div>
+        <div class="group">
+          <h3>Lab status</h3>
+          <div id="statusFilters"></div>
+        </div>
+        <div class="group">
+          <h3>Show</h3>
+          <label class="check"><input type="checkbox" id="showFunders" /><span class="swatch" style="background:#a371f7"></span> Top funder per lab</label>
+          <label class="check"><input type="checkbox" id="showCareer" checked /><span class="swatch" style="background:var(--career)"></span> Affiliation links</label>
+        </div>
+        <div class="group">
+          <h3>Min. works</h3>
+          <input type="range" id="minWorks" min="2" max="20" value="2" style="width:100%" />
+          <div class="row" style="color:var(--muted);font-size:12px">≥ <span id="minWorksVal">2</span> last-authored papers</div>
+        </div>
+        <div class="group">
+          <button class="btn" id="fitBtn">Fit view to results</button>
+        </div>
+      </div>
+      <div class="results-pane" id="resultsPane">
+        <div class="rp-head"><span id="resultCount">No search yet</span><span id="resultNote"></span></div>
+        <div id="results"></div>
+        <button class="btn" id="moreBtn" hidden>Show more</button>
+      </div>
+    </aside>
+
+    <div class="stage">
+      <div id="graph"></div>
+      <div class="empty" id="empty">
+        <h2>Pick a method, model system or place to populate the graph</h2>
+        <p id="emptyCounts"></p>
+        <p>Matching labs appear with their institutions; click a lab for its publications, affiliations and funders.</p>
+      </div>
+      <div class="tooltip" id="tooltip"></div>
+      <div class="hint">Drag to pan · scroll to zoom · click a node to focus its network</div>
+      <div class="detail" id="detail"></div>
+    </div>
+  </div>
+
+  <script src="vendor/graphology.umd.min.js"></script>
+  <script src="vendor/sigma.min.js"></script>
+  <script src="data.js"></script>
+  <script>
+  (async function () {
+    const statsEl = document.getElementById("stats");
+    let data, tags, works;
+    try { [data, tags, works] = await Promise.all([loadData(), loadTags(), loadWorks()]); }
+    catch (e) { statsEl.textContent = e.message; return; }
+
+    // Every node needs coordinates, not just the first one - a partially laid
+    // out dataset used to slip through and feed NaN into Sigma mid-render.
+    if (data.nodes.some((n) => typeof n.x !== "number" || typeof n.y !== "number")) {
+      statsEl.textContent = "Layout missing — run: node scripts/layout.mjs";
+      return;
+    }
+
+    const { byId } = indexGraph(data);
+    const c = data.meta.counts || {};
+    statsEl.textContent =
+      `${fmtInt(c.institutions)} institutions · ${fmtInt(c.pis)} PIs · ` +
+      `${fmtInt((c.pis_by_status || {}).active)} active · ${data._source}` +
+      `${tags ? "" : " · no tags file"}${data.meta.partial ? " (partial)" : ""}`;
+
+    // ---- indices (built once) ----
+    const piNodes = data.nodes.filter((n) => n.type === "pi");
+    const piByInst = new Map();
+    for (const n of piNodes) {
+      if (!piByInst.has(n.institution)) piByInst.set(n.institution, []);
+      piByInst.get(n.institution).push(n.id);
+    }
+
+    const tagLabel = new Map(), tagGroup = new Map();
+    const tagList = { methods: [], organisms: [] };
+    if (tags) {
+      for (const g of ["methods", "organisms"]) {
+        for (const t of tags.tags[g]) {
+          tagLabel.set(t.id, t.label); tagGroup.set(t.id, g); tagList[g].push(t);
+        }
+      }
+    }
+    const byTag = new Map();                       // tagId -> Set(piId)
+    const tagRec = (id) => (tags && tags.pis[id]) || null;
+    if (tags) {
+      for (const [pid, rec] of Object.entries(tags.pis)) {
+        if (!byId.has(pid)) continue;              // tags built against an older graph
+        for (const g of ["m", "o"]) {
+          for (const t of Object.keys(rec[g] || {})) {
+            if (!byTag.has(t)) byTag.set(t, new Set());
+            byTag.get(t).add(pid);
+          }
+        }
+      }
+    }
+
+    // Country from primary + current institutions; city from the primary only,
+    // because umbrella affiliations (CNRS, Inserm) would otherwise file a
+    // Marseille lab under Paris.
+    const byCC = new Map(), byCity = new Map(), ccCount = new Map(), citiesByCC = new Map();
+    const addTo = (map, key, id) => { if (!map.has(key)) map.set(key, new Set()); map.get(key).add(id); };
+    for (const n of piNodes) {
+      const ccs = new Set();
+      for (const iid of new Set([n.institution, ...(n.currentInstitutions || [])])) {
+        const inst = byId.get(iid);
+        if (inst && inst.cc) ccs.add(inst.cc);
+      }
+      for (const cc of ccs) { addTo(byCC, cc, n.id); ccCount.set(cc, (ccCount.get(cc) || 0) + 1); }
+      const prim = byId.get(n.institution);
+      if (prim && prim.cc && prim.city) {
+        addTo(byCity, prim.cc + "|" + prim.city, n.id);
+        if (!citiesByCC.has(prim.cc)) citiesByCC.set(prim.cc, new Map());
+        const m = citiesByCC.get(prim.cc);
+        m.set(prim.city, (m.get(prim.city) || 0) + 1);
+      }
+    }
+    const ccName = (cc) => {
+      for (const n of data.nodes) if (n.type === "institution" && n.cc === cc && n.country) return n.country;
+      return countryName(cc);
+    };
+    const countryList = [...ccCount.keys()].map((cc) => ({ cc, name: ccName(cc), n: ccCount.get(cc) }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    // One lowercase haystack per PI, built once: name, institution, topics,
+    // tag labels, place and every in-window paper title.
+    const hay = new Map();
+    for (const n of piNodes) {
+      const inst = byId.get(n.institution);
+      const rec = tagRec(n.id);
+      const parts = [n.label, inst ? inst.label : "", inst ? placeOf(inst) : "",
+                     n.primaryTopic, (n.topics || []).join(" ")];
+      if (rec) for (const g of ["m", "o"]) for (const t of Object.keys(rec[g] || {})) parts.push(tagLabel.get(t) || t);
+      const wl = works && works.pis[n.id];
+      if (wl) for (const w of wl) parts.push(w[1]);
+      hay.set(n.id, parts.join(" \n ").toLowerCase());
+    }
+
+    // ---- graph (all nodes loaded once; visibility is the only thing that changes) ----
+    const Graph = graphology.Graph || graphology;
+    const graph = new Graph({ multi: true });
+    for (const n of data.nodes) {
+      graph.addNode(n.id, {
+        x: n.x, y: n.y, size: 3,
+        color: n.type === "pi" ? (STATUS_COLORS[n.status] || NODE_COLORS.pi) : NODE_COLORS[n.type],
+        label: n.label, ntype: n.type,
+      });
+    }
+    // Endpoints are stored on the edge so the reducer never has to call
+    // graph.extremities() (an array allocation per edge per frame).
+    for (const l of data.links) {
+      if (!graph.hasNode(l.source) || !graph.hasNode(l.target) || l.source === l.target) continue;
+      const funding = l.rel === "funded_by";
+      graph.addEdge(l.source, l.target, {
+        rel: l.rel, s: l.source, t: l.target,
+        color: funding ? "#6f42c166" : "#db61a2aa",
+        size: funding ? 0.5 : 0.9,
+      });
+    }
+
+    const renderer = new Sigma(graph, document.getElementById("graph"), {
+      renderLabels: true,
+      labelRenderedSizeThreshold: 0,
+      labelFont: "-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif",
+      labelColor: { color: "#c9d1d9" },
+      labelDensity: 0.5,
+      labelGridCellSize: 90,
+      defaultEdgeColor: "#3a434f66",
+      zIndex: true,
+      minCameraRatio: 0.02,
+      maxCameraRatio: 4,
+    });
+    const camera = renderer.getCamera();
+
+    // ---- query state ----
+    // Nothing is drawn until at least one of text / tags / place / pinned is
+    // set: status and min-works alone never populate the graph.
+    const q = { text: "", methods: new Set(), organisms: new Set(), requireAll: false,
+                cc: "", city: "", statuses: new Set(["active"]), minWorks: 2,
+                pinned: new Set(), showFunders: false, showCareer: true };
+    const hasQuery = () => !!(q.text || q.methods.size || q.organisms.size || q.cc || q.city || q.pinned.size);
+
+    let result = [];                 // ranked PI ids
+    let resultSet = new Set();
+    let visible = new Set();
+    let focusSet = null;
+    let sizeOf = () => 3;
+    let forceLabels = false;
+    let shown = 0;
+    let lastSig = "";
+
+    const unionAll = (sets) => { const u = new Set(); for (const s of sets) for (const x of s) u.add(x); return u; };
+    const intersectAll = (sets) => {
+      sets = [...sets].sort((a, b) => a.size - b.size);
+      const out = new Set();
+      for (const x of sets[0]) if (sets.every((s) => s.has(x))) out.add(x);
+      return out;
+    };
+    const tagSet = (group) => {
+      if (!q[group].size) return null;
+      const sets = [...q[group]].map((t) => byTag.get(t) || new Set());
+      return q.requireAll ? intersectAll(sets) : unionAll(sets);
+    };
+
+    function scorePI(n, terms, rec) {
+      let s = 0;
+      if (rec) {
+        for (const t of q.methods) if (rec.m[t]) s += Math.log1p(rec.m[t]);
+        for (const t of q.organisms) if (rec.o[t]) s += Math.log1p(rec.o[t]);
+      }
+      if (terms.length) {
+        const name = n.label.toLowerCase(), topic = (n.primaryTopic || "").toLowerCase();
+        const inst = (byId.get(n.institution) || {}).label || "";
+        const wl = (works && works.pis[n.id]) || [];
+        for (const t of terms) {
+          if (name.includes(t)) s += 5;
+          if (topic.includes(t)) s += 4;
+          if (inst.toLowerCase().includes(t)) s += 2;
+          let hits = 0;
+          for (const w of wl) if (w[1].toLowerCase().includes(t) && ++hits >= 5) break;
+          s += hits;
+        }
+      }
+      if (n.status === "active") s += 2;
+      return s + Math.min(n.works || 0, 60) / 120;
+    }
+
+    function runQuery({ fit = true } = {}) {
+      const empty = document.getElementById("empty");
+      if (!hasQuery()) {
+        result = []; resultSet = new Set(); visible = new Set(); lastSig = "";
+        empty.hidden = false;
+        renderer.setCustomBBox(null);
+        renderer.refresh();
+        renderResults(); updateFacetCounts(); writeHash();
+        return;
+      }
+      empty.hidden = true;
+
+      const terms = q.text.toLowerCase().split(/\s+/).filter(Boolean);
+      const place = q.city ? (byCity.get(q.cc + "|" + q.city) || new Set())
+                  : q.cc ? (byCC.get(q.cc) || new Set()) : null;
+      const mSet = tagSet("methods"), oSet = tagSet("organisms");
+      const cands = [place, mSet, oSet].filter(Boolean).sort((a, b) => a.size - b.size);
+      const iter = cands.length ? cands[0] : piNodes.map((n) => n.id);
+
+      const scored = [];
+      const consider = (id, pinned) => {
+        const n = byId.get(id);
+        if (!n || n.type !== "pi") return;
+        if (!pinned) {
+          if (!q.statuses.has(n.status)) return;
+          if ((n.works || 0) < q.minWorks) return;
+          if (place && !place.has(id)) return;
+          if (mSet && !mSet.has(id)) return;
+          if (oSet && !oSet.has(id)) return;
+          if (terms.length) { const h = hay.get(id); for (const t of terms) if (!h.includes(t)) return; }
+        }
+        scored.push([id, scorePI(n, terms, tagRec(id))]);
+      };
+      for (const id of iter) if (!q.pinned.has(id)) consider(id, false);
+      for (const id of q.pinned) consider(id, true);
+      scored.sort((a, b) => b[1] - a[1]);
+      result = scored.map((x) => x[0]);
+      resultSet = new Set(result);
+
+      // Visible = result PIs + their institutions (+ top funder), edges follow.
+      visible = new Set(result);
+      const instPi = new Map();
+      // With a place filter, only draw the institutions inside that place so
+      // "United Kingdom" does not also paint a joint appointment in Basel.
+      const inPlace = (inst) => !q.cc || (inst.cc === q.cc && (!q.city || inst.city === q.city));
+      for (const id of result) {
+        const n = byId.get(id);
+        let drawn = 0;
+        for (const iid of new Set([n.institution, ...(n.currentInstitutions || [])])) {
+          const inst = byId.get(iid);
+          if (!inst || !inPlace(inst)) continue;
+          visible.add(iid); instPi.set(iid, (instPi.get(iid) || 0) + 1); drawn++;
+        }
+        if (!drawn && byId.has(n.institution)) {     // pinned PI outside the place filter
+          visible.add(n.institution); instPi.set(n.institution, (instPi.get(n.institution) || 0) + 1);
+        }
+        if (q.showFunders && n.funders && n.funders[0] && byId.has(n.funders[0].id)) visible.add(n.funders[0].id);
+      }
+
+      // Sizes from the result, not the dataset.
+      const dot = Math.max(1.8, Math.min(6, 700 / Math.sqrt(visible.size + 1)));
+      sizeOf = (id, ntype) => ntype === "institution" ? 3.5 + 3.2 * Math.log10(1 + (instPi.get(id) || 0))
+                            : ntype === "funder" ? dot * 1.3 : dot;
+      const instSizes = [...instPi.keys()].map((i) => sizeOf(i, "institution")).sort((a, b) => b - a);
+      renderer.setSetting("labelRenderedSizeThreshold", instSizes.length > 40 ? instSizes[40] : 0);
+      // Force every label only for small result sets; beyond that Sigma's
+      // label grid picks the non-overlapping subset (institutions win by size).
+      forceLabels = result.length <= 40;
+
+      const sig = `${visible.size}|${result.length}|${result.slice(0, 3).join(",")}`;
+      renderer.refresh();
+      if (fit && sig !== lastSig) fitToVisible();
+      lastSig = sig;
+      renderResults(); updateFacetCounts(); writeHash();
+    }
+
+    function fitToVisible() {
+      if (!visible.size) { renderer.setCustomBBox(null); renderer.refresh(); camera.animatedReset(); return; }
+      let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+      for (const id of visible) {
+        const n = byId.get(id);
+        if (n.x < x0) x0 = n.x; if (n.x > x1) x1 = n.x;
+        if (n.y < y0) y0 = n.y; if (n.y > y1) y1 = n.y;
+      }
+      // Sigma normalises to max(width, height); pad 8% and never let a
+      // single-node result collapse into a zero-size box.
+      const ext = Math.max(x1 - x0, y1 - y0);
+      const half = Math.max(ext / 2 * 1.16, 300);
+      const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+      renderer.setCustomBBox({ x: [cx - half, cx + half], y: [cy - half, cy + half] });
+      renderer.refresh();
+      camera.animatedReset({ duration: 450 });
+    }
+
+    // ---- reducers ----
+    const DIM = "#30363d";
+    renderer.setSetting("nodeReducer", (id, attr) => {
+      if (!visible.has(id)) { const r = { ...attr }; r.hidden = true; return r; }
+      const r = { ...attr };
+      r.size = sizeOf(id, attr.ntype);
+      if (attr.ntype === "institution") { r.zIndex = 1; r.forceLabel = visible.size <= 80; }
+      else if (attr.ntype === "pi" && forceLabels) r.forceLabel = true;
+      if (focusSet) {
+        if (!focusSet.has(id)) { r.color = DIM; r.label = ""; r.zIndex = 0; r.forceLabel = false; }
+        else { r.zIndex = 2; r.forceLabel = true; }
+      }
+      return r;
+    });
+    renderer.setSetting("edgeReducer", (id, attr) => {
+      let hide = false;
+      if (attr.rel === "affiliated_with" && !q.showCareer) hide = true;
+      else if (!visible.has(attr.s) || !visible.has(attr.t)) hide = true;
+      else if (focusSet && !(focusSet.has(attr.s) && focusSet.has(attr.t))) hide = true;
+      if (!hide) return attr;
+      const r = { ...attr }; r.hidden = true; return r;
+    });
+
+    let pending = null;
+    function refresh(opts) {
+      if (pending) clearTimeout(pending);
+      pending = setTimeout(() => { pending = null; runQuery(opts); }, 120);
+    }
+
+    // ---- facet controls ----
+    const chipBoxes = { methods: document.getElementById("methodChips"),
+                        organisms: document.getElementById("organismChips") };
+    for (const g of ["methods", "organisms"]) {
+      const box = chipBoxes[g];
+      if (!tags) { box.innerHTML = `<span class="facet-hint">No tags yet — run <code>pipeline/enrich_text.py crawl</code> then <code>tag</code>.</span>`; continue; }
+      for (const t of [...tagList[g]].sort((a, b) => b.pis - a.pis)) {
+        const el = document.createElement("span");
+        el.className = "chip"; el.dataset.tag = t.id;
+        el.innerHTML = `${escapeHTML(t.label)}<span class="n">${fmtInt(t.pis)}</span>`;
+        el.addEventListener("click", () => {
+          if (q[g].has(t.id)) q[g].delete(t.id); else q[g].add(t.id);
+          el.classList.toggle("active", q[g].has(t.id));
+          refresh();
+        });
+        box.appendChild(el);
+      }
+    }
+    document.querySelectorAll("[data-clear]").forEach((el) => el.addEventListener("click", () => {
+      const g = el.dataset.clear; q[g].clear();
+      chipBoxes[g].querySelectorAll(".chip").forEach((x) => x.classList.remove("active"));
+      refresh();
+    }));
+    document.getElementById("requireAll").addEventListener("change", (e) => { q.requireAll = e.target.checked; refresh(); });
+
+    function updateFacetCounts() {
+      if (!tags) return;
+      const active = hasQuery();
+      for (const g of ["methods", "organisms"]) {
+        for (const el of chipBoxes[g].querySelectorAll(".chip")) {
+          const set = byTag.get(el.dataset.tag) || new Set();
+          let n;
+          if (!active) n = set.size;
+          else if (set.size < resultSet.size) { n = 0; for (const x of set) if (resultSet.has(x)) n++; }
+          else { n = 0; for (const x of resultSet) if (set.has(x)) n++; }
+          el.querySelector(".n").textContent = fmtInt(n);
+          el.classList.toggle("zero", active && n === 0);
+        }
+      }
+    }
+
+    const ccSel = document.getElementById("ccSel"), citySel = document.getElementById("citySel");
+    for (const cn of countryList) {
+      const o = document.createElement("option");
+      o.value = cn.cc; o.textContent = `${cn.name} (${fmtInt(cn.n)})`;
+      ccSel.appendChild(o);
+    }
+    function fillCities() {
+      citySel.innerHTML = `<option value="">Any city</option>`;
+      const m = citiesByCC.get(q.cc);
+      citySel.disabled = !m;
+      if (!m) return;
+      for (const [city, n] of [...m.entries()].sort((a, b) => b[1] - a[1])) {
+        const o = document.createElement("option");
+        o.value = city; o.textContent = `${city} (${fmtInt(n)})`;
+        citySel.appendChild(o);
+      }
+      citySel.value = q.city && m.has(q.city) ? q.city : "";
+      if (!citySel.value) q.city = "";
+    }
+    ccSel.addEventListener("change", () => { q.cc = ccSel.value; q.city = ""; fillCities(); refresh(); });
+    citySel.addEventListener("change", () => { q.city = citySel.value; refresh(); });
+
+    const qEl = document.getElementById("q");
+    qEl.addEventListener("input", () => { q.text = qEl.value.trim(); refresh(); });
+
+    const statusBox = document.getElementById("statusFilters");
+    for (const [key, label] of Object.entries(STATUS_LABELS)) {
+      const n = (c.pis_by_status || {})[key] || 0;
+      const l = document.createElement("label");
+      l.className = "check";
+      l.innerHTML = `<input type="checkbox" data-status="${key}" ${key === "active" ? "checked" : ""}>` +
+                    `<span class="swatch" style="background:${STATUS_COLORS[key]}"></span> ` +
+                    `${label} <span style="color:var(--muted)">(${fmtInt(n)})</span>`;
+      statusBox.appendChild(l);
+    }
+    statusBox.addEventListener("change", (e) => {
+      const s = e.target.dataset.status;
+      if (!s) return;
+      if (e.target.checked) q.statuses.add(s); else q.statuses.delete(s);
+      refresh();
+    });
+    document.getElementById("showFunders").addEventListener("change", (e) => { q.showFunders = e.target.checked; refresh({ fit: false }); });
+    document.getElementById("showCareer").addEventListener("change", (e) => { q.showCareer = e.target.checked; renderer.refresh(); });
+    const mw = document.getElementById("minWorks"), mwVal = document.getElementById("minWorksVal");
+    mw.addEventListener("input", (e) => { q.minWorks = +e.target.value; mwVal.textContent = e.target.value; refresh({ fit: false }); });
+    document.getElementById("fitBtn").addEventListener("click", () => { setFocus(null); fitToVisible(); });
+    document.getElementById("clearAll").addEventListener("click", () => {
+      q.text = ""; qEl.value = ""; q.methods.clear(); q.organisms.clear(); q.cc = ""; q.city = ""; q.pinned.clear();
+      ccSel.value = ""; fillCities();
+      document.querySelectorAll(".facet-chips .chip.active").forEach((x) => x.classList.remove("active"));
+      setFocus(null); runQuery();
+    });
+
+    document.getElementById("emptyCounts").textContent =
+      `${fmtInt((c.pis_by_status || {}).active)} active labs · ` +
+      (tags ? `${tagList.methods.length} methods · ${tagList.organisms.length} model systems · ` : "") +
+      `${countryList.length} countries · ${fmtInt([...citiesByCC.values()].reduce((a, m) => a + m.size, 0))} cities`;
+
+    // ---- results list ----
+    const resultsEl = document.getElementById("results");
+    const moreBtn = document.getElementById("moreBtn");
+    const PAGE = 100;
+    // Under a place filter, name the affiliation that is actually in that
+    // place (a joint appointment's primary may be abroad).
+    function shownInst(n) {
+      const prim = byId.get(n.institution);
+      if (!q.cc || !prim || (prim.cc === q.cc && (!q.city || prim.city === q.city))) return prim;
+      for (const iid of n.currentInstitutions || []) {
+        const inst = byId.get(iid);
+        if (inst && inst.cc === q.cc && (!q.city || inst.city === q.city)) return inst;
+      }
+      return prim;
+    }
+    function rowHTML(id) {
+      const n = byId.get(id);
+      const inst = shownInst(n);
+      const rec = tagRec(id);
+      const sel = new Set([...q.methods, ...q.organisms]);
+      const chips = rec ? tagChipsHTML(rec, tagLabel, 4, sel)
+                        : (tags ? `<span class="facet-hint">no tagged works ${tags.meta.years[0]}–${String(tags.meta.years.at(-1)).slice(2)}</span>` : "");
+      return `<div class="rc" data-id="${escapeHTML(id)}">
+        <div class="rc-name"><span class="swatch" style="background:${STATUS_COLORS[n.status] || NODE_COLORS.pi}"></span>${escapeHTML(n.label)}</div>
+        <div class="rc-where">${escapeHTML(inst ? inst.label : "")}${inst && placeOf(inst) ? " · " + escapeHTML(placeOf(inst)) : ""}</div>
+        ${chips ? `<div class="tags">${chips}</div>` : ""}
+      </div>`;
+    }
+    function renderResults() {
+      const count = document.getElementById("resultCount"), note = document.getElementById("resultNote");
+      if (!hasQuery()) {
+        count.textContent = "No search yet"; note.textContent = "";
+        resultsEl.innerHTML = ""; moreBtn.hidden = true; shown = 0; return;
+      }
+      const nInst = new Set(result.map((id) => byId.get(id).institution)).size;
+      count.textContent = `${fmtInt(result.length)} matching lab${result.length === 1 ? "" : "s"} · ${fmtInt(nInst)} institution${nInst === 1 ? "" : "s"}`;
+      note.textContent = "";
+      shown = Math.min(PAGE, result.length);
+      resultsEl.innerHTML = result.slice(0, shown).map(rowHTML).join("") ||
+        `<div class="facet-hint" style="padding:8px 4px">Nothing matches. Loosen a facet or untick “require all”.</div>`;
+      moreBtn.hidden = shown >= result.length;
+    }
+    moreBtn.addEventListener("click", () => {
+      const next = Math.min(shown + PAGE, result.length);
+      resultsEl.insertAdjacentHTML("beforeend", result.slice(shown, next).map(rowHTML).join(""));
+      shown = next; moreBtn.hidden = shown >= result.length;
+    });
+    resultsEl.addEventListener("click", (e) => {
+      const row = e.target.closest(".rc");
+      if (!row) return;
+      resultsEl.querySelectorAll(".rc.sel").forEach((x) => x.classList.remove("sel"));
+      row.classList.add("sel");
+      setFocus(row.dataset.id);
+      zoomTo(row.dataset.id, 0.3);
+    });
+
+    // ---- focus / selection ----
+    const detail = document.getElementById("detail");
+    function setFocus(id) {
+      if (!id) { focusSet = null; detail.classList.remove("show"); renderer.refresh(); return; }
+      const set = new Set([id]);
+      graph.forEachNeighbor(id, (nb) => set.add(nb));
+      focusSet = set;
+      detail.innerHTML = detailHTML(byId.get(id), { byId, piByInst, tagRec, tagLabel, works, tags,
+                                                    terms: q.text.toLowerCase().split(/\s+/).filter(Boolean) });
+      detail.classList.add("show");
+      renderer.refresh();
+    }
+    function zoomTo(id, ratio) {
+      const p = renderer.getNodeDisplayData(id);
+      if (p) camera.animate({ x: p.x, y: p.y, ratio: Math.min(camera.ratio, ratio) }, { duration: 400 });
+    }
+    renderer.on("clickNode", ({ node }) => { setFocus(node); zoomTo(node, 0.35); });
+    renderer.on("clickStage", () => setFocus(null));
+
+    // ---- hover tooltip ----
+    const tooltip = document.getElementById("tooltip");
+    renderer.on("enterNode", ({ node }) => {
+      tooltip.innerHTML = tooltipHTML(byId.get(node), tagRec(node), tagLabel);
+      tooltip.style.display = "block";
+    });
+    renderer.on("moveBody", () => { tooltip.style.display = "none"; });
+    renderer.getMouseCaptor().on("mousemovebody", (e) => {
+      if (tooltip.style.display === "block") {
+        tooltip.style.left = e.x + 14 + "px";
+        tooltip.style.top = e.y + 14 + "px";
+      }
+    });
+    renderer.on("leaveNode", () => { tooltip.style.display = "none"; });
+
+    // ---- URL state ----
+    // #m=two_photon,optogenetics&o=mouse&cc=GB&city=Oxford&t=cortex&s=active,winding_down&pin=A5…
+    let writingHash = false;
+    function writeHash() {
+      const p = new URLSearchParams();
+      if (q.text) p.set("t", q.text);
+      if (q.methods.size) p.set("m", [...q.methods].join(","));
+      if (q.organisms.size) p.set("o", [...q.organisms].join(","));
+      if (q.requireAll) p.set("all", "1");
+      if (q.cc) p.set("cc", q.cc);
+      if (q.city) p.set("city", q.city);
+      if (q.pinned.size) p.set("pin", [...q.pinned].join(","));
+      const s = [...q.statuses].sort().join(",");
+      if (s !== "active") p.set("s", s);
+      writingHash = true;
+      history.replaceState(null, "", "#" + p.toString());
+      writingHash = false;
+    }
+    function readHash() {
+      const raw = decodeURIComponent(location.hash.replace(/^#/, "")).trim();
+      if (!raw) return;
+      if (/^[AIF]\d+$/.test(raw)) { q.pinned = new Set([raw]); return raw; }   // legacy #<id> from search.html
+      const p = new URLSearchParams(raw);
+      q.text = p.get("t") || ""; qEl.value = q.text;
+      q.methods = new Set((p.get("m") || "").split(",").filter((t) => byTag.has(t) || tagLabel.has(t)));
+      q.organisms = new Set((p.get("o") || "").split(",").filter((t) => byTag.has(t) || tagLabel.has(t)));
+      q.requireAll = p.get("all") === "1"; document.getElementById("requireAll").checked = q.requireAll;
+      q.cc = ccCount.has(p.get("cc")) ? p.get("cc") : ""; ccSel.value = q.cc;
+      q.city = p.get("city") || ""; fillCities();
+      q.pinned = new Set((p.get("pin") || "").split(",").filter((id) => byId.has(id)));
+      if (p.get("s")) {
+        q.statuses = new Set(p.get("s").split(",").filter((s) => STATUS_LABELS[s]));
+        statusBox.querySelectorAll("input").forEach((b) => { b.checked = q.statuses.has(b.dataset.status); });
+      }
+      for (const g of ["methods", "organisms"]) {
+        chipBoxes[g].querySelectorAll(".chip").forEach((x) => x.classList.toggle("active", q[g].has(x.dataset.tag)));
+      }
+      return [...q.pinned][0] || null;
+    }
+    function openHash() {
+      const pinned = readHash();
+      runQuery();
+      if (pinned && byId.has(pinned)) { setFocus(pinned); zoomTo(pinned, 0.2); }
+    }
+    window.addEventListener("hashchange", () => { if (!writingHash) openHash(); });
+
+    renderer.refresh();
+    openHash();
+  })();
+
+  function tooltipHTML(n, rec, tagLabel) {
+    if (!n) return "";
+    const name = escapeHTML(n.label);
+    if (n.type === "institution") {
+      return `<b>${name}</b><br>${escapeHTML(n.instType || "")}${placeOf(n) ? " · " + escapeHTML(placeOf(n)) : ""}`;
+    }
+    if (n.type === "funder") return `<b>${name}</b><br>funder`;
+    const chips = rec ? tagChipsHTML(rec, tagLabel, 3) : "";
+    return `<b>${name}</b><br>${escapeHTML(n.primaryTopic || "")}<br>` +
+           `${fmtInt(n.works)} last-authored · ${yearSpan(n)} · ${escapeHTML(STATUS_LABELS[n.status] || "")}` +
+           (chips ? `<div class="tags" style="margin:6px 0 0">${chips}</div>` : "");
+  }
+
+  function detailHTML(n, ctx) {
+    if (!n) return "";
+    const { byId, piByInst, tagRec, tagLabel, works, tags, terms } = ctx;
+    const close = `<span class="close" onclick="document.getElementById('detail').classList.remove('show')">×</span>`;
+    const color = n.type === "pi" ? (STATUS_COLORS[n.status] || NODE_COLORS.pi) : NODE_COLORS[n.type];
+    const kind = `<span class="kind" style="background:${color}22;color:${color}">${n.type}</span>`;
+    const name = escapeHTML(n.label);
+
+    if (n.type === "institution") {
+      const ids = piByInst.get(n.id) || [];
+      const active = ids.filter((id) => byId.get(id).status === "active").length;
+      return `${close}${kind}<h2>${name}</h2>
+        <div class="meta-row"><span>Type</span><span>${escapeHTML(n.instType || "—")}</span></div>
+        <div class="meta-row"><span>Place</span><span>${escapeHTML(placeOf(n) || n.cc || "—")}</span></div>
+        ${n.region ? `<div class="meta-row"><span>Region</span><span>${escapeHTML(n.region)}</span></div>` : ""}
+        <div class="meta-row"><span>Labs here</span><span>${fmtInt(ids.length)}</span></div>
+        <div class="meta-row"><span>Currently active</span><span>${fmtInt(active)}</span></div>
+        ${n.homepage ? `<p style="margin-top:12px"><a href="${escapeHTML(n.homepage)}" target="_blank" rel="noopener">Institution website ↗</a></p>` : ""}
+        ${n.ror ? `<p><a href="${escapeHTML(n.ror)}" target="_blank" rel="noopener">ROR record ↗</a></p>` : ""}
+        <p><a href="https://openalex.org/${escapeHTML(n.id)}" target="_blank" rel="noopener">OpenAlex ↗</a></p>`;
+    }
+
+    if (n.type === "funder") {
+      return `${close}${kind}<h2>${name}</h2>
+        <p style="color:var(--muted);margin-top:10px">Funder, from OpenAlex grant records.</p>
+        <p><a href="https://openalex.org/${escapeHTML(n.id)}" target="_blank" rel="noopener">OpenAlex ↗</a></p>`;
+    }
+
+    const prim = byId.get(n.institution);
+    const rec = tagRec(n.id);
+    const win = tags ? `${tags.meta.years[0]}–${tags.meta.years.at(-1)}` : "";
+    const orgChips = rec ? tagChipsHTML({ o: rec.o }, tagLabel, 8) : "";
+    const methChips = rec ? tagChipsHTML({ m: rec.m }, tagLabel, 12) : "";
+    const none = `<span class="facet-hint">${tags ? `no tagged works ${win}` : "no tags file"}</span>`;
+
+    // The full affiliation history lives on the node, so the graph can draw
+    // only current edges while the panel still shows the whole career.
+    const affs = (n.institutions || []).map((a) => {
+      const inst = byId.get(a.id);
+      return `<li>${a.current ? "<b>" : ""}${escapeHTML(inst ? inst.label : a.id)}${a.current ? "</b>" : ""}
+        <span style="color:var(--muted)">(${a.firstYear ?? "?"}–${a.lastYear ?? "?"}, ${fmtInt(a.works)} works)</span>
+        ${a.current ? '<span class="tag">current</span>' : ""}</li>`;
+    }).join("");
+    const funders = (n.funders || []).map((f) => {
+      const fn = byId.get(f.id);
+      return `<li>${escapeHTML(fn ? fn.label : f.id)} <span style="color:var(--muted)">(${fmtInt(f.works)})</span></li>`;
+    }).join("");
+
+    // Publications: matching titles first, then newest first.
+    let pubs = "";
+    const wl = works && works.pis[n.id];
+    if (wl && wl.length) {
+      const hit = (w) => terms.length && terms.some((t) => w[1].toLowerCase().includes(t));
+      const ordered = [...wl].sort((a, b) => (hit(b) - hit(a)) || (b[0] - a[0]));
+      const mark = (s) => { let out = escapeHTML(s); for (const t of terms) out = out.replace(new RegExp(`(${t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "ig"), "<mark>$1</mark>"); return out; };
+      const li = (w) => `<li><span class="yr">${w[0] || ""}</span>${mark(w[1])}` +
+        (w[2].length ? `<div class="tags">${w[2].map((t) => `<span class="tag ${t in (rec?.o || {}) ? "tag-org" : "tag-meth"}">${escapeHTML(tagLabel.get(t) || t)}</span>`).join("")}</div>` : "") + `</li>`;
+      const first = ordered.slice(0, 15).map(li).join("");
+      const rest = ordered.slice(15).map(li).join("");
+      pubs = `<div class="section-h">Publications ${win} <span style="color:var(--muted);text-transform:none;letter-spacing:0">(${fmtInt(wl.length)} last-authored${works.meta.capPerPI && wl.length >= works.meta.capPerPI ? ", most recent" : ""})</span></div>
+        <ul class="pubs">${first}</ul>` +
+        (rest ? `<ul class="pubs" hidden>${rest}</ul><span class="more" onclick="this.previousElementSibling.hidden=false;this.remove()">show all ${fmtInt(wl.length)}</span>` : "");
+    }
+
+    return `${close}${kind}<h2>${name}</h2>
+      <div class="place">${escapeHTML(prim ? prim.label : "")}${prim && placeOf(prim) ? " · " + escapeHTML(placeOf(prim)) : ""}</div>
+      <div class="meta-row"><span>Status</span><span style="color:${color}">${escapeHTML(STATUS_LABELS[n.status] || "?")}</span></div>
+      <div class="meta-row"><span>Active years</span><span>${yearSpan(n)}</span></div>
+      <div class="meta-row"><span>Last-authored</span><span>${fmtInt(n.works)}</span></div>
+      <div class="meta-row"><span>Corresponding</span><span>${fmtInt(n.corresponding)}</span></div>
+      <div class="meta-row"><span>Citations</span><span>${fmtInt(n.citations)}</span></div>
+      <div class="section-h">Model systems ${win}</div>
+      <div class="tags">${orgChips || none}</div>
+      <div class="section-h">Methods ${win}</div>
+      <div class="tags">${methChips || none}</div>
+      <div class="section-h">Research topics</div>
+      <div class="tags">${(n.topics || []).map((t) => `<span class="tag">${escapeHTML(t)}</span>`).join("") || "—"}</div>
+      ${pubs}
+      <div class="section-h">Affiliations</div>
+      ${affs ? `<ul>${affs}</ul>` : `<p style="color:var(--muted)">None recorded.</p>`}
+      ${funders ? `<div class="section-h">Funders</div><ul>${funders}</ul>` : ""}
+      <p style="margin-top:10px"><a href="https://openalex.org/${escapeHTML(n.id)}" target="_blank" rel="noopener">OpenAlex profile ↗</a></p>`;
+  }
+  </script>
+</body>
+</html>

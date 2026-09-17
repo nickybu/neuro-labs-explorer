@@ -1,0 +1,18 @@
+# Secrets
+.openalex_key
+
+# Local tooling
+.claude/settings.local.json
+.DS_Store
+__pycache__/
+*.pyc
+node_modules/
+.idea/
+
+# Generated data: rebuilt by the pipeline, too large for git.
+# data/backups/ holds dated snapshots of the built outputs.
+data/cache/
+data/backups/
+data/*.json
+data/*.json.gz
+*.tmp

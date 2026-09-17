@@ -1,0 +1,33 @@
+{
+  "_comment": [
+    "Umbrella / parent organisations that shadow the institution a PI actually works at.",
+    "These are DEMOTED, not deleted: an umbrella is never chosen as a PI's primary",
+    "institution while any real candidate exists, but it survives in the PI's",
+    "institutions[] list because 'this person is CNRS' is true and worth keeping.",
+    "",
+    "Every ID here was verified live against /institutions - a dead ID silently",
+    "disables the entry, which is exactly how 26 UK PIs ended up filed under",
+    "'University of London'. Verify before adding.",
+    "",
+    "Add to this list as per-country audits surface more (Italian IRCCS network,",
+    "Spanish CIBER, Nordic university hospitals are known gaps)."
+  ],
+  "umbrellas": {
+    "I1294671590": "Centre National de la Recherche Scientifique (FR)",
+    "I154526488": "Inserm (FR)",
+    "I2738703131": "Commissariat a l'Energie Atomique (FR)",
+    "I4210097159": "Assistance Publique - Hopitaux de Paris (FR)",
+    "I4210096427": "Institut des Sciences Biologiques (FR)",
+    "I149899117": "Max Planck Society (DE)",
+    "I1305996414": "Helmholtz Association (DE)",
+    "I315704651": "Leibniz Association (DE)",
+    "I124357947": "University of London (GB)",
+    "I1299303238": "National Institutes of Health (US)",
+    "I1299022934": "US Department of Health and Human Services (US)",
+    "I1322918889": "US Department of Veterans Affairs (US)",
+    "I2799886695": "Veterans Health Administration (US)",
+    "I1344073410": "Howard Hughes Medical Institute (US)",
+    "I48633490": "Mass General Brigham (US)",
+    "I2799853436": "Johns Hopkins Medicine (US)"
+  }
+}
