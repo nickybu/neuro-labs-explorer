@@ -2,7 +2,7 @@
   "name": "neuro-labs-explorer",
   "version": "1.0.0",
   "private": true,
-  "description": "Graph tool for UK neuroscience/AI/cognitive research labs",
+  "description": "Graph and faceted search for neuroscience labs, built from OpenAlex",
   "type": "module",
   "scripts": {
     "layout": "node scripts/layout.mjs",

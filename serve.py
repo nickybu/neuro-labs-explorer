@@ -8,8 +8,8 @@ Three things matter here once the dataset is large:
 
 * **Threaded.** The old single-threaded server handled one request at a time,
   so a multi-MB dataset download blocked every stylesheet and script behind it.
-* **Pre-compressed.** The pipeline writes ``graph.json.gz`` next to
-  ``graph.json``; this serves that file directly when the client accepts gzip
+* **Pre-compressed.** The pipeline writes ``graph_neuro.json.gz`` next to
+  ``graph_neuro.json``; this serves that file directly when the client accepts gzip
   (roughly 8x on this JSON). Nothing is compressed per request.
 * **Cacheable data.** ``no-store`` is scoped to markup and code so the dataset
   gets normal ``Last-Modified`` / 304 handling instead of a full re-download on

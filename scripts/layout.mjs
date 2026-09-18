@@ -24,7 +24,7 @@ for (let i = 0; i < argv.length; i++) {
   else files.push(argv[i]);
 }
 if (files.length === 0) {
-  for (const f of ["data/graph_neuro.json", "data/graph.json", "data/sample.json"]) {
+  for (const f of ["data/graph_neuro.json"]) {
     if (fs.existsSync(f)) files.push(f);
   }
 }

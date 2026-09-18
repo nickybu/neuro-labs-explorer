@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Collect neuroscience PIs from OpenAlex, keyed on last-authorship.
 
-Supersedes ``collect.py``, whose "top-cited authors per institution" approach
-truncated before filtering and so returned fewer PIs for Oxford than for Edge
-Hill. Here a PI is defined by what they actually publish:
+An earlier "top-cited authors per institution" approach truncated before
+filtering and so returned fewer PIs for Oxford than for Edge Hill. Here a PI is
+defined by what they actually publish:
 
     a last author on >= MIN_LAST_AUTHOR_WORKS neuroscience works
     within the collection window, affiliated to an in-region institution
@@ -46,12 +46,13 @@ import urllib.request
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import config as C  # noqa: E402
-
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-DEFAULT_OUT = os.path.join(ROOT, "data", "graph.json")
+DEFAULT_OUT = os.path.join(ROOT, "data", "graph_neuro.json")
+
+# OpenAlex polite pool: identify ourselves on every request.
+MAILTO = "you@example.com"
+API_ROOT = "https://api.openalex.org"
 CACHE = os.path.join(ROOT, "data", "cache")
 
 # --- collection window / scope -------------------------------------------
@@ -149,15 +150,15 @@ def _get(path: str, params: dict) -> dict:
     Raises BudgetExhausted on 429 so callers can checkpoint and resume tomorrow
     rather than losing the crawl.
     """
-    params = {**params, "mailto": C.MAILTO}
+    params = {**params, "mailto": MAILTO}
     if API_KEY:
         params["api_key"] = API_KEY
-    url = f"{C.API_ROOT}/{path}?{urllib.parse.urlencode(params)}"
+    url = f"{API_ROOT}/{path}?{urllib.parse.urlencode(params)}"
     last_err = None
     for attempt in range(5):
         try:
             req = urllib.request.Request(
-                url, headers={"User-Agent": f"neuro-labs-explorer ({C.MAILTO})"})
+                url, headers={"User-Agent": f"neuro-labs-explorer ({MAILTO})"})
             with urllib.request.urlopen(req, timeout=90) as resp:
                 return json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
@@ -176,7 +177,7 @@ def _get(path: str, params: dict) -> dict:
 
 def _budget() -> tuple[int, float]:
     """Remaining credits and USD on the current key, via a cheap singleton call."""
-    url = f"{C.API_ROOT}/works/W2741809807?select=id&mailto={C.MAILTO}"
+    url = f"{API_ROOT}/works/W2741809807?select=id&mailto={MAILTO}"
     if API_KEY:
         url += f"&api_key={API_KEY}"
     try:
