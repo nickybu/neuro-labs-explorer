@@ -25,12 +25,10 @@ const STATUS_LABELS = {
 const CAREER_COLOR = "#db61a2";
 const FUNDING_COLOR = "#6f42c1";
 
-// Newest dataset first. serve.py transparently swaps in a pre-compressed .gz
-// sibling, so these stay plain .json paths.
+// serve.py transparently swaps in the pre-compressed .gz sibling, so this
+// stays a plain .json path.
 const DATASET_PATHS = [
   "../data/graph_neuro.json",
-  "../data/graph.json",
-  "../data/sample.json",
 ];
 
 async function loadData() {

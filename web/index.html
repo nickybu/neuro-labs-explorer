@@ -3,16 +3,12 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Neuro Labs Explorer — research graph</title>
+  <title>Neuro Labs Explorer</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <div class="topbar">
     <h1><span class="brand">◧</span> Neuro Labs Explorer</h1>
-    <nav>
-      <a href="index.html" class="active">Graph</a>
-      <a href="search.html">Search</a>
-    </nav>
     <div class="spacer"></div>
     <div class="stats" id="stats">loading…</div>
   </div>
@@ -21,17 +17,21 @@
     <aside class="sidebar faceted">
       <div class="facets">
         <div class="group">
-          <h3>Search <span class="clear" id="clearAll">clear all</span></h3>
-          <input class="search-input" id="q" placeholder="Name, topic, institution, paper title…" autocomplete="off" />
-        </div>
-        <div class="group">
-          <h3>Methods <span class="clear" data-clear="methods">clear</span></h3>
-          <div class="facet-chips" id="methodChips"></div>
-        </div>
-        <div class="group">
-          <h3>Model systems <span class="clear" data-clear="organisms">clear</span></h3>
-          <div class="facet-chips" id="organismChips"></div>
+          <h3>Search
+            <button class="info-btn" id="legendBtn" title="What can I filter by?" aria-label="What can I filter by?">i</button>
+            <span class="clear" id="clearAll">clear all</span>
+          </h3>
+          <div class="search-wrap">
+            <input class="search-input" id="q" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="suggest"
+                   placeholder="Method, model system, institution, lab, any text…  ( / )" />
+            <div class="suggest" id="suggest" role="listbox" hidden></div>
+          </div>
           <label class="check" style="margin-top:6px"><input type="checkbox" id="requireAll" /> Require all selected tags</label>
+        </div>
+        <div class="group" id="instGroup" hidden>
+          <h3>Institution <span class="clear" id="clearInst">clear</span></h3>
+          <div class="inst-facet" id="instFacet"></div>
+          <label class="check"><input type="checkbox" id="instCo" /> Include labs with a co-author affiliation here</label>
         </div>
         <div class="group">
           <h3>Place</h3>
@@ -45,36 +45,88 @@
           <div id="statusFilters"></div>
         </div>
         <div class="group">
-          <h3>Show</h3>
-          <label class="check"><input type="checkbox" id="showFunders" /><span class="swatch" style="background:#a371f7"></span> Top funder per lab</label>
-          <label class="check"><input type="checkbox" id="showCareer" checked /><span class="swatch" style="background:var(--career)"></span> Affiliation links</label>
-        </div>
-        <div class="group">
-          <h3>Min. works</h3>
+          <h3>Min. last-authored papers</h3>
           <input type="range" id="minWorks" min="2" max="20" value="2" style="width:100%" />
-          <div class="row" style="color:var(--muted);font-size:12px">≥ <span id="minWorksVal">2</span> last-authored papers</div>
+          <div class="row" style="color:var(--muted);font-size:12px">≥ <span id="minWorksVal">2</span> papers (1996–2026)</div>
         </div>
-        <div class="group">
-          <button class="btn" id="fitBtn">Fit view to results</button>
+        <div class="group" id="graphOpts" hidden>
+          <h3>Graph</h3>
+          <label class="check"><input type="checkbox" id="showCareer" checked /><span class="swatch line-swatch" style="background:var(--career)"></span> Affiliation links</label>
+          <label class="check"><input type="checkbox" id="showCo" /><span class="swatch line-swatch" style="background:var(--co)"></span> Co-author affiliation links</label>
+          <label class="check"><input type="checkbox" id="showFunders" /><span class="swatch" style="background:#a371f7"></span> Top funder per lab</label>
         </div>
-      </div>
-      <div class="results-pane" id="resultsPane">
-        <div class="rp-head"><span id="resultCount">No search yet</span><span id="resultNote"></span></div>
-        <div id="results"></div>
-        <button class="btn" id="moreBtn" hidden>Show more</button>
       </div>
     </aside>
 
-    <div class="stage">
-      <div id="graph"></div>
-      <div class="empty" id="empty">
-        <h2>Pick a method, model system or place to populate the graph</h2>
-        <p id="emptyCounts"></p>
-        <p>Matching labs appear with their institutions; click a lab for its publications, affiliations and funders.</p>
+    <main class="main">
+      <div class="main-head">
+        <div class="pills" id="pills"></div>
+        <div class="rp-head">
+          <span id="resultCount">Search to begin</span>
+          <span class="spacer"></span>
+          <button class="btn sm" id="graphBtn" hidden>Show graph</button>
+          <select id="sortSel" class="sort-sel" title="Sort results">
+            <option value="relevance">Relevance</option>
+            <option value="tagged">Most matching papers</option>
+            <option value="works">Most last-authored papers</option>
+            <option value="recent">Most recent</option>
+            <option value="name">Name</option>
+          </select>
+        </div>
       </div>
-      <div class="tooltip" id="tooltip"></div>
-      <div class="hint">Drag to pan · scroll to zoom · click a node to focus its network</div>
-      <div class="detail" id="detail"></div>
+
+      <div class="split" id="split">
+        <div class="cards-pane" id="cardsPane">
+          <div class="empty" id="empty">
+            <h2>Find a neuroscience lab</h2>
+            <p id="emptyCounts"></p>
+            <p>Search for a method, model system, institution or lab, or for any text in names, topics and
+             paper titles. Place has its own dropdowns. Not sure what exists? Open the
+             <b>i</b> legend next to the search box. Click any result to see it in the graph.</p>
+            <div class="facet-chips" id="suggestions"></div>
+          </div>
+          <div id="results"></div>
+          <button class="btn" id="moreBtn" hidden>Show more</button>
+        </div>
+
+        <section class="graph-pane" id="graphPane" hidden>
+          <div class="gp-head">
+            <span id="graphTitle">Graph</span>
+            <span class="spacer"></span>
+            <button class="icon-btn" id="fitBtn" title="Fit to results (shift-click: include outliers)">⤢</button>
+            <button class="icon-btn" id="zoomIn" title="Zoom in">+</button>
+            <button class="icon-btn" id="zoomOut" title="Zoom out">−</button>
+            <button class="icon-btn" id="closeGraph" title="Close graph">×</button>
+          </div>
+          <div class="gp-body">
+            <div class="stage">
+              <div id="graph"></div>
+              <div class="graph-loading" id="graphLoading" hidden>building graph…</div>
+              <div class="tooltip" id="tooltip"></div>
+              <div class="legend-bar">
+                <span><i class="dot" style="background:var(--inst)"></i>Institution</span>
+                <span><i class="dot" style="background:#f0883e"></i>Active</span>
+                <span><i class="dot" style="background:#b9873f"></i>Winding down</span>
+                <span><i class="dot" style="background:#6e7681"></i>Inactive</span>
+                <span><i class="bar" style="background:var(--career)"></i>Affiliation</span>
+                <span><i class="bar" style="background:var(--co)"></i>Co-author</span>
+              </div>
+            </div>
+            <aside class="detail" id="detail"></aside>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <div class="legend-modal" id="legend" hidden>
+    <div class="lm-box">
+      <div class="lm-head"><b>What can I filter by?</b><span class="spacer"></span>
+        <button class="icon-btn" id="legendClose" title="Close (Esc)">×</button></div>
+      <p class="note">Type in the search box to filter by <b>method</b>, <b>model system</b>, <b>institution</b> or <b>lab</b>,
+         or to search names, topics and paper titles. Country and city have their own dropdowns.
+         Click any chip below to add it as a filter.</p>
+      <div id="legendBody"></div>
     </div>
   </div>
 
@@ -90,54 +142,54 @@
 
     // Every node needs coordinates, not just the first one - a partially laid
     // out dataset used to slip through and feed NaN into Sigma mid-render.
-    if (data.nodes.some((n) => typeof n.x !== "number" || typeof n.y !== "number")) {
-      statsEl.textContent = "Layout missing — run: node scripts/layout.mjs";
-      return;
-    }
+    const layoutOK = !data.nodes.some((n) => typeof n.x !== "number" || typeof n.y !== "number");
 
     const { byId } = indexGraph(data);
     const c = data.meta.counts || {};
     statsEl.textContent =
       `${fmtInt(c.institutions)} institutions · ${fmtInt(c.pis)} PIs · ` +
-      `${fmtInt((c.pis_by_status || {}).active)} active · ${data._source}` +
+      `${fmtInt((c.pis_by_status || {}).active)} active` +
       `${tags ? "" : " · no tags file"}${data.meta.partial ? " (partial)" : ""}`;
+    const win = tags ? `${Math.min(...tags.meta.years)}–${Math.max(...tags.meta.years)}` : "";
 
-    // ---- indices (built once) ----
+    // ------------------------------------------------------------------
+    // Indices (built once)
+    // ------------------------------------------------------------------
     const piNodes = data.nodes.filter((n) => n.type === "pi");
-    const piByInst = new Map();
-    for (const n of piNodes) {
-      if (!piByInst.has(n.institution)) piByInst.set(n.institution, []);
-      piByInst.get(n.institution).push(n.id);
-    }
+    const addTo = (map, key, id) => { if (!map.has(key)) map.set(key, new Set()); map.get(key).add(id); };
 
-    const tagLabel = new Map(), tagGroup = new Map();
+    // Labs AT an institution: primary or a current affiliation.
+    const labsAt = new Map();
+    for (const n of piNodes) for (const iid of new Set([n.institution, ...(n.currentInstitutions || [])])) addTo(labsAt, iid, n.id);
+
+    const tagLabel = new Map(), tagCat = new Map();
     const tagList = { methods: [], organisms: [] };
     if (tags) {
       for (const g of ["methods", "organisms"]) {
-        for (const t of tags.tags[g]) {
-          tagLabel.set(t.id, t.label); tagGroup.set(t.id, g); tagList[g].push(t);
-        }
+        for (const t of tags.tags[g]) { tagLabel.set(t.id, t.label); tagCat.set(t.id, t.category || "Other"); tagList[g].push(t); }
       }
     }
-    const byTag = new Map();                       // tagId -> Set(piId)
     const tagRec = (id) => (tags && tags.pis[id]) || null;
+    const byTag = new Map();                        // tagId -> Set(piId)
+    const coByInst = new Map();                     // instId -> [[piId, papers]]
+    const coInst = (tags && tags.coInstitutions) || {};
     if (tags) {
       for (const [pid, rec] of Object.entries(tags.pis)) {
-        if (!byId.has(pid)) continue;              // tags built against an older graph
-        for (const g of ["m", "o"]) {
-          for (const t of Object.keys(rec[g] || {})) {
-            if (!byTag.has(t)) byTag.set(t, new Set());
-            byTag.get(t).add(pid);
-          }
+        if (!byId.has(pid)) continue;               // tags built against an older graph
+        for (const g of ["m", "o"]) for (const t of Object.keys(rec[g] || {})) addTo(byTag, t, pid);
+        for (const ca of rec.ca || []) {
+          if (!coByInst.has(ca[0])) coByInst.set(ca[0], []);
+          coByInst.get(ca[0]).push([pid, ca[1]]);
         }
       }
     }
+    const instLabel = (iid) => (byId.get(iid) || {}).label || (coInst[iid] || {}).label || iid;
+    const instNode = (iid) => byId.get(iid) || (coInst[iid] ? { id: iid, type: "institution", ...coInst[iid] } : null);
 
     // Country from primary + current institutions; city from the primary only,
     // because umbrella affiliations (CNRS, Inserm) would otherwise file a
-    // Marseille lab under Paris.
+    // Marseille lab under Paris. Co-author affiliations never count for place.
     const byCC = new Map(), byCity = new Map(), ccCount = new Map(), citiesByCC = new Map();
-    const addTo = (map, key, id) => { if (!map.has(key)) map.set(key, new Set()); map.get(key).add(id); };
     for (const n of piNodes) {
       const ccs = new Set();
       for (const iid of new Set([n.institution, ...(n.currentInstitutions || [])])) {
@@ -153,75 +205,77 @@
         m.set(prim.city, (m.get(prim.city) || 0) + 1);
       }
     }
-    const ccName = (cc) => {
-      for (const n of data.nodes) if (n.type === "institution" && n.cc === cc && n.country) return n.country;
-      return countryName(cc);
-    };
-    const countryList = [...ccCount.keys()].map((cc) => ({ cc, name: ccName(cc), n: ccCount.get(cc) }))
+    const ccNames = new Map();
+    for (const n of data.nodes) if (n.type === "institution" && n.cc && n.country && !ccNames.has(n.cc)) ccNames.set(n.cc, n.country);
+    const countryList = [...ccCount.keys()].map((cc) => ({ cc, name: ccNames.get(cc) || countryName(cc), n: ccCount.get(cc) }))
       .sort((a, b) => a.name.localeCompare(b.name));
 
-    // One lowercase haystack per PI, built once: name, institution, topics,
-    // tag labels, place and every in-window paper title.
+    // One lowercase haystack per PI, built once: name, institutions, place,
+    // topics, tag labels, co-author affiliations and every in-window title.
     const hay = new Map();
     for (const n of piNodes) {
       const inst = byId.get(n.institution);
       const rec = tagRec(n.id);
-      const parts = [n.label, inst ? inst.label : "", inst ? placeOf(inst) : "",
-                     n.primaryTopic, (n.topics || []).join(" ")];
-      if (rec) for (const g of ["m", "o"]) for (const t of Object.keys(rec[g] || {})) parts.push(tagLabel.get(t) || t);
+      const parts = [n.label, inst ? inst.label : "", inst ? placeOf(inst) : "", n.primaryTopic, (n.topics || []).join(" ")];
+      for (const iid of n.currentInstitutions || []) if (iid !== n.institution) parts.push(instLabel(iid));
+      if (rec) {
+        for (const g of ["m", "o"]) for (const t of Object.keys(rec[g] || {})) parts.push(tagLabel.get(t) || t);
+        for (const ca of rec.ca || []) parts.push(instLabel(ca[0]));
+      }
       const wl = works && works.pis[n.id];
       if (wl) for (const w of wl) parts.push(w[1]);
       hay.set(n.id, parts.join(" \n ").toLowerCase());
     }
 
-    // ---- graph (all nodes loaded once; visibility is the only thing that changes) ----
-    const Graph = graphology.Graph || graphology;
-    const graph = new Graph({ multi: true });
+    // One search box for everything nameable: methods, model systems,
+    // institutions and labs. Place keeps its own dropdowns.
+    const suggest = [];
+    if (tags) {
+      for (const g of ["methods", "organisms"]) {
+        for (const t of tagList[g]) {
+          suggest.push({ kind: g === "methods" ? "method" : "organism", id: t.id, label: t.label,
+                         lower: t.label.toLowerCase(), sub: t.category || "", count: t.pis, active: 0 });
+        }
+      }
+    }
     for (const n of data.nodes) {
-      graph.addNode(n.id, {
-        x: n.x, y: n.y, size: 3,
-        color: n.type === "pi" ? (STATUS_COLORS[n.status] || NODE_COLORS.pi) : NODE_COLORS[n.type],
-        label: n.label, ntype: n.type,
-      });
+      if (n.type !== "institution") continue;
+      suggest.push({ kind: "institution", id: n.id, label: n.label, lower: (n.label || "").toLowerCase(),
+                     sub: placeOf(n), count: (labsAt.get(n.id) || new Set()).size, active: 0 });
     }
-    // Endpoints are stored on the edge so the reducer never has to call
-    // graph.extremities() (an array allocation per edge per frame).
-    for (const l of data.links) {
-      if (!graph.hasNode(l.source) || !graph.hasNode(l.target) || l.source === l.target) continue;
-      const funding = l.rel === "funded_by";
-      graph.addEdge(l.source, l.target, {
-        rel: l.rel, s: l.source, t: l.target,
-        color: funding ? "#6f42c166" : "#db61a2aa",
-        size: funding ? 0.5 : 0.9,
-      });
+    for (const [iid, meta] of Object.entries(coInst)) {
+      if (byId.has(iid)) continue;                       // graph institutions are already in
+      suggest.push({ kind: "institution", id: iid, label: meta.label || iid, lower: (meta.label || "").toLowerCase(),
+                     sub: placeOf(meta), count: (coByInst.get(iid) || []).length, active: 0 });
     }
+    for (const n of piNodes) {
+      const inst = byId.get(n.institution);
+      suggest.push({ kind: "lab", id: n.id, label: n.label, lower: n.label.toLowerCase(),
+                     sub: inst ? inst.label : "", count: n.works || 0, active: n.status === "active" ? 1 : 0 });
+    }
+    const SG_GROUPS = [["method", "Methods"], ["organism", "Model systems"],
+                       ["institution", "Institutions"], ["lab", "Labs"]];
+    const SG_CAP = { method: 5, organism: 5, institution: 5, lab: 6 };
 
-    const renderer = new Sigma(graph, document.getElementById("graph"), {
-      renderLabels: true,
-      labelRenderedSizeThreshold: 0,
-      labelFont: "-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif",
-      labelColor: { color: "#c9d1d9" },
-      labelDensity: 0.5,
-      labelGridCellSize: 90,
-      defaultEdgeColor: "#3a434f66",
-      zIndex: true,
-      minCameraRatio: 0.02,
-      maxCameraRatio: 4,
-    });
-    const camera = renderer.getCamera();
+    // ------------------------------------------------------------------
+    // Query state. The page lands on search; the graph opens on demand.
+    // ------------------------------------------------------------------
+    // texts: typed phrases, ALL must match (AND). insts: institutions, ANY may
+    // match (OR), like tags. Both are lists so a second search adds instead of
+    // replacing the first.
+    const q = { texts: [], methods: new Set(), organisms: new Set(), requireAll: false,
+                cc: "", city: "", insts: new Set(), instCo: false, statuses: new Set(["active"]), minWorks: 2,
+                pinned: new Set(), showFunders: false, showCareer: true, showCo: false, sort: "relevance", sel: "" };
+    const hasQuery = () => !!(q.texts.length || q.methods.size || q.organisms.size || q.cc || q.city || q.insts.size || q.pinned.size);
+    const terms = () => q.texts.flatMap((t) => t.toLowerCase().split(/\s+/)).filter(Boolean);
 
-    // ---- query state ----
-    // Nothing is drawn until at least one of text / tags / place / pinned is
-    // set: status and min-works alone never populate the graph.
-    const q = { text: "", methods: new Set(), organisms: new Set(), requireAll: false,
-                cc: "", city: "", statuses: new Set(["active"]), minWorks: 2,
-                pinned: new Set(), showFunders: false, showCareer: true };
-    const hasQuery = () => !!(q.text || q.methods.size || q.organisms.size || q.cc || q.city || q.pinned.size);
-
-    let result = [];                 // ranked PI ids
+    let result = [];                  // ranked PI ids
     let resultSet = new Set();
+    let scores = new Map();
     let visible = new Set();
+    let instPi = new Map();
     let focusSet = null;
+    let hoverId = null;
     let sizeOf = () => 3;
     let forceLabels = false;
     let shown = 0;
@@ -239,146 +293,443 @@
       const sets = [...q[group]].map((t) => byTag.get(t) || new Set());
       return q.requireAll ? intersectAll(sets) : unionAll(sets);
     };
+    const instSet = () => {
+      if (!q.insts.size) return null;
+      const s = new Set();
+      for (const iid of q.insts) {
+        for (const pid of labsAt.get(iid) || []) s.add(pid);
+        if (q.instCo) for (const [pid] of coByInst.get(iid) || []) s.add(pid);
+      }
+      return s;
+    };
+    const matchedTagPapers = (id) => {
+      const rec = tagRec(id); if (!rec) return 0;
+      let s = 0;
+      for (const t of q.methods) s += rec.m[t] || 0;
+      for (const t of q.organisms) s += rec.o[t] || 0;
+      return s;
+    };
 
-    function scorePI(n, terms, rec) {
+    function scorePI(n, ts, rec) {
       let s = 0;
       if (rec) {
         for (const t of q.methods) if (rec.m[t]) s += Math.log1p(rec.m[t]);
         for (const t of q.organisms) if (rec.o[t]) s += Math.log1p(rec.o[t]);
       }
-      if (terms.length) {
+      if (ts.length) {
         const name = n.label.toLowerCase(), topic = (n.primaryTopic || "").toLowerCase();
-        const inst = (byId.get(n.institution) || {}).label || "";
+        const inst = ((byId.get(n.institution) || {}).label || "").toLowerCase();
         const wl = (works && works.pis[n.id]) || [];
-        for (const t of terms) {
+        for (const t of ts) {
           if (name.includes(t)) s += 5;
           if (topic.includes(t)) s += 4;
-          if (inst.toLowerCase().includes(t)) s += 2;
+          if (inst.includes(t)) s += 2;
+          if (rec && rec.ca && rec.ca.some((ca) => instLabel(ca[0]).toLowerCase().includes(t))) s += 1;
           let hits = 0;
           for (const w of wl) if (w[1].toLowerCase().includes(t) && ++hits >= 5) break;
           s += hits;
         }
       }
+      for (const iid of q.insts) if (labsAt.get(iid)?.has(n.id)) { s += 3; break; }
       if (n.status === "active") s += 2;
       return s + Math.min(n.works || 0, 60) / 120;
     }
 
+    function sortResult() {
+      const by = {
+        relevance: (a, b) => scores.get(b) - scores.get(a),
+        tagged: (a, b) => (matchedTagPapers(b) - matchedTagPapers(a)) || ((tagRec(b)?.n || 0) - (tagRec(a)?.n || 0)) || (scores.get(b) - scores.get(a)),
+        works: (a, b) => (byId.get(b).works - byId.get(a).works) || (scores.get(b) - scores.get(a)),
+        recent: (a, b) => ((byId.get(b).lastYear || 0) - (byId.get(a).lastYear || 0)) || (byId.get(b).works - byId.get(a).works),
+        name: (a, b) => byId.get(a).label.localeCompare(byId.get(b).label),
+      }[q.sort] || ((a, b) => scores.get(b) - scores.get(a));
+      result.sort(by);
+    }
+
     function runQuery({ fit = true } = {}) {
-      const empty = document.getElementById("empty");
       if (!hasQuery()) {
-        result = []; resultSet = new Set(); visible = new Set(); lastSig = "";
-        empty.hidden = false;
-        renderer.setCustomBBox(null);
-        renderer.refresh();
-        renderResults(); updateFacetCounts(); writeHash();
+        result = []; resultSet = new Set(); visible = new Set(); instPi = new Map(); lastSig = "";
+        syncGraph({ fit: false });
+        renderResults(); renderPills(); updateFacetCounts(); writeHash();
         return;
       }
-      empty.hidden = true;
-
-      const terms = q.text.toLowerCase().split(/\s+/).filter(Boolean);
-      const place = q.city ? (byCity.get(q.cc + "|" + q.city) || new Set())
-                  : q.cc ? (byCC.get(q.cc) || new Set()) : null;
-      const mSet = tagSet("methods"), oSet = tagSet("organisms");
-      const cands = [place, mSet, oSet].filter(Boolean).sort((a, b) => a.size - b.size);
+      const ts = terms();
+      const place = q.city ? (byCity.get(q.cc + "|" + q.city) || new Set()) : q.cc ? (byCC.get(q.cc) || new Set()) : null;
+      const mSet = tagSet("methods"), oSet = tagSet("organisms"), iSet = instSet();
+      const cands = [place, mSet, oSet, iSet].filter(Boolean).sort((a, b) => a.size - b.size);
       const iter = cands.length ? cands[0] : piNodes.map((n) => n.id);
 
-      const scored = [];
+      scores = new Map();
       const consider = (id, pinned) => {
         const n = byId.get(id);
-        if (!n || n.type !== "pi") return;
+        if (!n || n.type !== "pi" || scores.has(id)) return;
         if (!pinned) {
           if (!q.statuses.has(n.status)) return;
           if ((n.works || 0) < q.minWorks) return;
           if (place && !place.has(id)) return;
           if (mSet && !mSet.has(id)) return;
           if (oSet && !oSet.has(id)) return;
-          if (terms.length) { const h = hay.get(id); for (const t of terms) if (!h.includes(t)) return; }
+          if (iSet && !iSet.has(id)) return;
+          if (ts.length) { const h = hay.get(id); for (const t of ts) if (!h.includes(t)) return; }
         }
-        scored.push([id, scorePI(n, terms, tagRec(id))]);
+        scores.set(id, scorePI(n, ts, tagRec(id)));
       };
       for (const id of iter) if (!q.pinned.has(id)) consider(id, false);
       for (const id of q.pinned) consider(id, true);
-      scored.sort((a, b) => b[1] - a[1]);
-      result = scored.map((x) => x[0]);
+      result = [...scores.keys()];
+      sortResult();
       resultSet = new Set(result);
 
-      // Visible = result PIs + their institutions (+ top funder), edges follow.
-      visible = new Set(result);
-      const instPi = new Map();
-      // With a place filter, only draw the institutions inside that place so
-      // "United Kingdom" does not also paint a joint appointment in Basel.
+      // Visible = result labs + their institutions (+ co-author institutions,
+      // + top funder). Computed even while the graph is closed so opening it
+      // is instant.
       const inPlace = (inst) => !q.cc || (inst.cc === q.cc && (!q.city || inst.city === q.city));
+      visible = new Set(result);
+      instPi = new Map();
+      const bump = (iid) => { visible.add(iid); instPi.set(iid, (instPi.get(iid) || 0) + 1); };
       for (const id of result) {
         const n = byId.get(id);
         let drawn = 0;
         for (const iid of new Set([n.institution, ...(n.currentInstitutions || [])])) {
           const inst = byId.get(iid);
           if (!inst || !inPlace(inst)) continue;
-          visible.add(iid); instPi.set(iid, (instPi.get(iid) || 0) + 1); drawn++;
+          bump(iid); drawn++;
         }
-        if (!drawn && byId.has(n.institution)) {     // pinned PI outside the place filter
-          visible.add(n.institution); instPi.set(n.institution, (instPi.get(n.institution) || 0) + 1);
+        if (!drawn && byId.has(n.institution)) bump(n.institution);       // pinned lab outside the place filter
+        const rec = tagRec(id);
+        if (rec && rec.ca && (q.showCo || q.insts.size)) {
+          for (const ca of rec.ca) {
+            if (!byId.has(ca[0])) continue;
+            if (q.showCo || q.insts.has(ca[0])) bump(ca[0]);
+          }
         }
         if (q.showFunders && n.funders && n.funders[0] && byId.has(n.funders[0].id)) visible.add(n.funders[0].id);
       }
+      for (const iid of q.insts) if (byId.has(iid)) visible.add(iid);
 
-      // Sizes from the result, not the dataset.
-      const dot = Math.max(1.8, Math.min(6, 700 / Math.sqrt(visible.size + 1)));
-      sizeOf = (id, ntype) => ntype === "institution" ? 3.5 + 3.2 * Math.log10(1 + (instPi.get(id) || 0))
-                            : ntype === "funder" ? dot * 1.3 : dot;
-      const instSizes = [...instPi.keys()].map((i) => sizeOf(i, "institution")).sort((a, b) => b - a);
-      renderer.setSetting("labelRenderedSizeThreshold", instSizes.length > 40 ? instSizes[40] : 0);
-      // Force every label only for small result sets; beyond that Sigma's
-      // label grid picks the non-overlapping subset (institutions win by size).
+      // Sizes from the result, not the dataset. Floors keep dots clickable.
+      const dot = Math.max(3, Math.min(7, 700 / Math.sqrt(visible.size + 1)));
+      sizeOf = (id, ntype) => ntype === "institution" ? 5 + 3.2 * Math.log10(1 + (instPi.get(id) || 0))
+                            : ntype === "funder" ? dot * 1.2 : dot;
       forceLabels = result.length <= 40;
 
       const sig = `${visible.size}|${result.length}|${result.slice(0, 3).join(",")}`;
-      renderer.refresh();
-      if (fit && sig !== lastSig) fitToVisible();
+      syncGraph({ fit: fit && sig !== lastSig });
       lastSig = sig;
-      renderResults(); updateFacetCounts(); writeHash();
+      renderResults(); renderPills(); updateFacetCounts(); writeHash();
     }
 
-    function fitToVisible() {
-      if (!visible.size) { renderer.setCustomBBox(null); renderer.refresh(); camera.animatedReset(); return; }
-      let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
-      for (const id of visible) {
-        const n = byId.get(id);
-        if (n.x < x0) x0 = n.x; if (n.x > x1) x1 = n.x;
-        if (n.y < y0) y0 = n.y; if (n.y > y1) y1 = n.y;
+    // ------------------------------------------------------------------
+    // Graph pane: built lazily the first time it is opened
+    // ------------------------------------------------------------------
+    const graphPane = document.getElementById("graphPane");
+    const splitEl = document.getElementById("split");
+    let renderer = null, graph = null, camera = null, container = null, nCoEdges = 0;
+
+    function buildGraph() {
+      const Graph = graphology.Graph || graphology;
+      graph = new Graph({ multi: true });
+      for (const n of data.nodes) {
+        graph.addNode(n.id, {
+          x: n.x, y: n.y, size: 3,
+          color: n.type === "pi" ? (STATUS_COLORS[n.status] || NODE_COLORS.pi) : NODE_COLORS[n.type],
+          label: n.label, ntype: n.type,
+        });
       }
-      // Sigma normalises to max(width, height); pad 8% and never let a
+      // Endpoints are stored on the edge so the reducer never has to call
+      // graph.extremities() (an array allocation per edge per frame).
+      for (const l of data.links) {
+        if (!graph.hasNode(l.source) || !graph.hasNode(l.target) || l.source === l.target) continue;
+        const funding = l.rel === "funded_by";
+        graph.addEdge(l.source, l.target, {
+          rel: l.rel, s: l.source, t: l.target,
+          color: funding ? "#6f42c166" : "#db61a2aa", size: funding ? 0.5 : 0.9,
+        });
+      }
+      if (tags) {
+        for (const [pid, rec] of Object.entries(tags.pis)) {
+          if (!rec.ca || !graph.hasNode(pid)) continue;
+          for (const ca of rec.ca) {
+            if (!graph.hasNode(ca[0])) continue;
+            graph.addEdge(pid, ca[0], { rel: "co_affiliated", s: pid, t: ca[0], color: "#39c5bbcc", size: 0.8 });
+            nCoEdges++;
+          }
+        }
+      }
+
+      renderer = new Sigma(graph, document.getElementById("graph"), {
+        renderLabels: true,
+        labelRenderedSizeThreshold: 0,
+        labelFont: "-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif",
+        labelColor: { color: "#c9d1d9" },
+        labelDensity: 0.5,
+        labelGridCellSize: 90,
+        defaultEdgeColor: "#3a434f66",
+        zIndex: true,
+        minCameraRatio: 0.01,
+        maxCameraRatio: 4,
+      });
+      camera = renderer.getCamera();
+      container = renderer.getContainer();
+      camera.on("updated", () => scheduleSpacing());     // zoom and pan change what overlaps
+
+      const DIM = "#30363d";
+      renderer.setSetting("nodeReducer", (id, attr) => {
+        if (!visible.has(id)) { const r = { ...attr }; r.hidden = true; return r; }
+        const r = { ...attr };
+        r.size = sizeOf(id, attr.ntype);
+        if (attr.ntype === "institution") { r.zIndex = 1; r.forceLabel = visible.size <= 80 || q.insts.has(id); }
+        else if (attr.ntype === "pi" && forceLabels) r.forceLabel = true;
+        if (focusSet) {
+          if (!focusSet.has(id)) { r.color = DIM; r.label = ""; r.zIndex = 0; r.forceLabel = false; }
+          else { r.zIndex = 2; r.forceLabel = true; }
+        }
+        if (id === hoverId) { r.size *= 1.6; r.zIndex = 3; r.forceLabel = true; r.highlighted = true; r.label = attr.label; }
+        return r;
+      });
+      renderer.setSetting("edgeReducer", (id, attr) => {
+        let hide = false;
+        if (attr.rel === "affiliated_with" && !q.showCareer) hide = true;
+        else if (attr.rel === "co_affiliated" && !q.showCo && !q.insts.has(attr.t)) hide = true;
+        else if (!visible.has(attr.s) || !visible.has(attr.t)) hide = true;
+        else if (focusSet && !(focusSet.has(attr.s) && focusSet.has(attr.t))) hide = true;
+        if (!hide) return attr;
+        const r = { ...attr }; r.hidden = true; return r;
+      });
+
+      let raf = null;
+      renderer.getMouseCaptor().on("mousemovebody", (e) => {
+        if (raf) return;
+        raf = requestAnimationFrame(() => { raf = null; if (visible.size <= 6000) setHover(pickNode(e.x, e.y, 6000), e.x, e.y); });
+      });
+      renderer.on("enterNode", ({ node, event }) => { if (visible.size > 6000) setHover(node, event.x, event.y); });
+      renderer.on("leaveNode", () => { if (visible.size > 6000) setHover(null); });
+      renderer.on("leaveStage", () => setHover(null));
+      renderer.on("moveBody", () => { tooltip.style.display = "none"; });
+      renderer.on("clickNode", ({ node }) => openNode(node, { zoom: true }));
+      renderer.on("clickStage", ({ event }) => {
+        const id = pickNode(event.x, event.y, 60000);
+        if (id) openNode(id, { zoom: true }); else { setFocus(null); closeDetail(); }
+      });
+      document.getElementById("graphOpts").hidden = false;
+    }
+
+    // Sigma throws if asked to draw while its container is hidden (zero width),
+    // which happens after the graph pane is closed.
+    function paint(opts) { if (renderer && !graphPane.hidden) renderer.refresh(opts); }
+
+    function syncGraph({ fit = false } = {}) {
+      if (!renderer || graphPane.hidden) return;
+      const instSizes = [...instPi.keys()].map((i) => sizeOf(i, "institution")).sort((a, b) => b - a);
+      renderer.setSetting("labelRenderedSizeThreshold", instSizes.length > 40 ? instSizes[40] : 0);
+      paint();
+      if (fit) fitToVisible(); else scheduleSpacing();
+    }
+
+    async function openGraph(selId) {
+      if (!layoutOK) { alert("Layout missing — run: node scripts/layout.mjs"); return; }
+      const first = !renderer;
+      graphPane.hidden = false;
+      splitEl.classList.add("with-graph");
+      document.getElementById("graphBtn").hidden = true;
+      if (first) {
+        const loading = document.getElementById("graphLoading");
+        loading.hidden = false;
+        await new Promise((r) => setTimeout(r, 30));       // let the pane paint first
+        buildGraph();
+        loading.hidden = true;
+      } else renderer.resize();
+      syncGraph({ fit: true });
+      if (selId) openNode(selId, { zoom: true });
+      writeHash();
+    }
+    function closeGraph() {
+      graphPane.hidden = true;
+      splitEl.classList.remove("with-graph");
+      document.getElementById("graphBtn").hidden = !result.length;
+      q.sel = ""; closeDetail();
+      renderResults();
+      writeHash();
+    }
+    document.getElementById("closeGraph").addEventListener("click", closeGraph);
+    document.getElementById("graphBtn").addEventListener("click", () => openGraph(q.sel || result[0]));
+
+    // Fit to the bulk of the result, not to its stragglers: a handful of
+    // co-affiliated institutions on another continent used to stretch the box
+    // across half the layout and zoom everything down to a few pixels.
+    function fitToVisible({ all = false } = {}) {
+      if (!renderer || graphPane.hidden) return;
+      if (!visible.size) { renderer.setCustomBBox(null); paint(); camera.animatedReset(); return; }
+      const xs = [], ys = [];
+      for (const id of visible) { const n = byId.get(id); xs.push(n.x); ys.push(n.y); }
+      xs.sort((a, b) => a - b); ys.sort((a, b) => a - b);
+      const at = (arr, p) => arr[Math.max(0, Math.min(arr.length - 1, Math.round((arr.length - 1) * p)))];
+      const wide = all || xs.length < 12;
+      let x0 = wide ? xs[0] : at(xs, 0.05), x1 = wide ? xs[xs.length - 1] : at(xs, 0.95);
+      let y0 = wide ? ys[0] : at(ys, 0.05), y1 = wide ? ys[ys.length - 1] : at(ys, 0.95);
+      const selId = detailStack.at(-1);                  // never crop the open node out of view
+      if (selId && visible.has(selId)) {
+        const n = byId.get(selId);
+        if (n) { x0 = Math.min(x0, n.x); x1 = Math.max(x1, n.x); y0 = Math.min(y0, n.y); y1 = Math.max(y1, n.y); }
+      }
+      // Sigma normalises to max(width, height); pad and never let a
       // single-node result collapse into a zero-size box.
-      const ext = Math.max(x1 - x0, y1 - y0);
-      const half = Math.max(ext / 2 * 1.16, 300);
+      const half = Math.max(Math.max(x1 - x0, y1 - y0) / 2 * 1.2, 300);
       const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
       renderer.setCustomBBox({ x: [cx - half, cx + half], y: [cy - half, cy + half] });
-      renderer.refresh();
+      paint();
       camera.animatedReset({ duration: 450 });
+      scheduleSpacing(520);
     }
 
-    // ---- reducers ----
-    const DIM = "#30363d";
-    renderer.setSetting("nodeReducer", (id, attr) => {
-      if (!visible.has(id)) { const r = { ...attr }; r.hidden = true; return r; }
-      const r = { ...attr };
-      r.size = sizeOf(id, attr.ntype);
-      if (attr.ntype === "institution") { r.zIndex = 1; r.forceLabel = visible.size <= 80; }
-      else if (attr.ntype === "pi" && forceLabels) r.forceLabel = true;
-      if (focusSet) {
-        if (!focusSet.has(id)) { r.color = DIM; r.label = ""; r.zIndex = 0; r.forceLabel = false; }
-        else { r.zIndex = 2; r.forceLabel = true; }
+    // ------------------------------------------------------------------
+    // Screen-space de-overlap. The camera refits to whatever is visible, so
+    // spreading the stored layout changes nothing on screen; nudging nodes
+    // apart in pixels is the only fix that survives that normalisation.
+    // ------------------------------------------------------------------
+    const SPACING_MAX_NODES = 3000, SPACING_PAD = 1.5, SPACING_MAX_PUSH = 48, SPACING_ITER = 60;
+    let nodeOffset = new Map();                          // id -> [dx, dy] in graph units
+    let displaced = new Set();                           // nodes whose attributes we moved
+    let spacingTimer = null;
+    function scheduleSpacing(delay = 160) {
+      if (spacingTimer) clearTimeout(spacingTimer);
+      spacingTimer = setTimeout(() => { spacingTimer = null; relaxOverlaps(); }, delay);
+    }
+    function relaxOverlaps() {
+      if (!renderer || graphPane.hidden) return;
+      const had = nodeOffset.size;
+      nodeOffset = new Map();
+      if (!visible.size || visible.size > SPACING_MAX_NODES) { if (had) applyOffsets(); return; }
+      const ids = [], px = [], py = [], pr = [];
+      for (const id of visible) {
+        const d = renderer.getNodeDisplayData(id);
+        const base = byId.get(id);
+        if (!d || d.hidden || !base) continue;
+        // Start from the TRUE layout position, not the already-nudged one, or
+        // each pass would measure its own previous output and oscillate.
+        const p = renderer.graphToViewport(base);
+        ids.push(id); px.push(p.x); py.push(p.y); pr.push(renderer.scaleSize(d.size));
       }
-      return r;
-    });
-    renderer.setSetting("edgeReducer", (id, attr) => {
-      let hide = false;
-      if (attr.rel === "affiliated_with" && !q.showCareer) hide = true;
-      else if (!visible.has(attr.s) || !visible.has(attr.t)) hide = true;
-      else if (focusSet && !(focusSet.has(attr.s) && focusSet.has(attr.t))) hide = true;
-      if (!hide) return attr;
-      const r = { ...attr }; r.hidden = true; return r;
-    });
+      const n = ids.length;
+      if (!n) { if (had) applyOffsets(); return; }
+      const ox = new Float64Array(n), oy = new Float64Array(n);
+      const cell = 2 * Math.max(...pr) + SPACING_PAD + 2;
+      for (let it = 0; it < SPACING_ITER; it++) {
+        const grid = new Map();
+        for (let i = 0; i < n; i++) {
+          const k = Math.floor((px[i] + ox[i]) / cell) + "," + Math.floor((py[i] + oy[i]) / cell);
+          let b = grid.get(k); if (!b) grid.set(k, b = []);
+          b.push(i);
+        }
+        let moved = 0;
+        for (const [k, bucket] of grid) {
+          const c = k.split(","), gx = +c[0], gy = +c[1];
+          for (let ny = gy - 1; ny <= gy + 1; ny++) {
+            for (let nx = gx - 1; nx <= gx + 1; nx++) {
+              const other = grid.get(nx + "," + ny);
+              if (!other) continue;
+              for (const i of bucket) {
+                for (const j of other) {
+                  if (j <= i) continue;
+                  let dx = (px[j] + ox[j]) - (px[i] + ox[i]);
+                  let dy = (py[j] + oy[j]) - (py[i] + oy[i]);
+                  let d = Math.hypot(dx, dy);
+                  const need = pr[i] + pr[j] + SPACING_PAD;
+                  if (d >= need) continue;
+                  if (d < 1e-4) {                        // exactly coincident: deterministic fan-out
+                    const a = i * 2.39996323;
+                    dx = Math.cos(a); dy = Math.sin(a); d = 1;
+                  }
+                  const push = (need - d) / 2 / d;
+                  ox[i] -= dx * push; oy[i] -= dy * push;
+                  ox[j] += dx * push; oy[j] += dy * push;
+                  moved++;
+                }
+              }
+            }
+          }
+        }
+        if (!moved) break;
+      }
+      // px -> graph units. Sigma ignores x/y returned from the node reducer
+      // (verified: a reducer shift moves nothing, an attribute shift moves the
+      // node), so the offset is written to the graph attributes. The dataset in
+      // `data.nodes` keeps the true layout, which is what bbox maths reads.
+      const g0 = renderer.viewportToGraph({ x: 0, y: 0 });
+      const g1 = renderer.viewportToGraph({ x: 100, y: 100 });
+      const ux = (g1.x - g0.x) / 100, uy = (g1.y - g0.y) / 100;   // graph units per pixel
+      if (!ux || !uy) return;
+      for (let i = 0; i < n; i++) {
+        let dx = ox[i], dy = oy[i];
+        const m = Math.hypot(dx, dy);
+        if (m < 0.05) continue;
+        if (m > SPACING_MAX_PUSH) { dx *= SPACING_MAX_PUSH / m; dy *= SPACING_MAX_PUSH / m; }
+        nodeOffset.set(ids[i], [dx * ux, dy * uy]);
+      }
+      applyOffsets();
+    }
+
+    // Move the displaced nodes, and put back any that no longer need moving.
+    function applyOffsets() {
+      let touched = false;
+      for (const id of displaced) {
+        if (nodeOffset.has(id)) continue;
+        const base = byId.get(id);
+        if (base && graph.hasNode(id)) { graph.setNodeAttribute(id, "x", base.x); graph.setNodeAttribute(id, "y", base.y); touched = true; }
+      }
+      displaced = new Set();
+      for (const [id, off] of nodeOffset) {
+        const base = byId.get(id);
+        if (!base || !graph.hasNode(id)) continue;
+        graph.setNodeAttribute(id, "x", base.x + off[0]);
+        graph.setNodeAttribute(id, "y", base.y + off[1]);
+        displaced.add(id); touched = true;
+      }
+      if (touched) paint();
+    }
+
+    // Clicks and hovers snap to the nearest dot or its label, so a 3 px dot
+    // does not need a pixel-perfect click.
+    const measureCtx = document.createElement("canvas").getContext("2d");
+    function pickNode(x, y, limit) {
+      if (!renderer || graphPane.hidden || !visible.size || visible.size > limit) return null;
+      const labels = renderer.getNodeDisplayedLabels();
+      const size = renderer.getSetting("labelSize") || 14;
+      measureCtx.font = `${size}px ${renderer.getSetting("labelFont")}`;
+      let best = null, bestScore = Infinity;
+      for (const id of visible) {
+        const d = renderer.getNodeDisplayData(id);
+        if (!d || d.hidden) continue;
+        const p = renderer.framedGraphToViewport(d);
+        const r = renderer.scaleSize(d.size);
+        const dist = Math.hypot(p.x - x, p.y - y);
+        if (dist <= r + 12) {
+          const s = Math.max(0, dist - r);
+          if (s < bestScore) { best = id; bestScore = s; }
+        } else if (labels.has(id) && bestScore > 6) {
+          const w = measureCtx.measureText(d.label || "").width;
+          const lx = p.x + r + 3;
+          if (x >= lx - 2 && x <= lx + w + 4 && Math.abs(y - p.y) <= size * 0.75) {
+            if (8 < bestScore) { best = id; bestScore = 8; }
+          }
+        }
+      }
+      return best;
+    }
+
+    const tooltip = document.getElementById("tooltip");
+    function setHover(id, x, y) {
+      if (id !== hoverId) {
+        hoverId = id;
+        if (container) container.style.cursor = id ? "pointer" : "";
+        paint({ skipIndexation: true });
+      }
+      if (id) {
+        tooltip.innerHTML = tooltipHTML(instNode(id) || byId.get(id), tagRec(id), tagLabel);
+        tooltip.style.display = "block";
+        if (x != null) { tooltip.style.left = x + 16 + "px"; tooltip.style.top = y + 16 + "px"; }
+      } else tooltip.style.display = "none";
+    }
 
     let pending = null;
     function refresh(opts) {
@@ -386,44 +737,190 @@
       pending = setTimeout(() => { pending = null; runQuery(opts); }, 120);
     }
 
-    // ---- facet controls ----
-    const chipBoxes = { methods: document.getElementById("methodChips"),
-                        organisms: document.getElementById("organismChips") };
-    for (const g of ["methods", "organisms"]) {
-      const box = chipBoxes[g];
-      if (!tags) { box.innerHTML = `<span class="facet-hint">No tags yet — run <code>pipeline/enrich_text.py crawl</code> then <code>tag</code>.</span>`; continue; }
-      for (const t of [...tagList[g]].sort((a, b) => b.pis - a.pis)) {
-        const el = document.createElement("span");
-        el.className = "chip"; el.dataset.tag = t.id;
-        el.innerHTML = `${escapeHTML(t.label)}<span class="n">${fmtInt(t.pis)}</span>`;
-        el.addEventListener("click", () => {
-          if (q[g].has(t.id)) q[g].delete(t.id); else q[g].add(t.id);
-          el.classList.toggle("active", q[g].has(t.id));
-          refresh();
-        });
-        box.appendChild(el);
+    // ------------------------------------------------------------------
+    // Facet controls
+    // ------------------------------------------------------------------
+    // ------------------------------------------------------------------
+    // Single search box: typeahead grouped by category
+    // ------------------------------------------------------------------
+    const qEl = document.getElementById("q");
+    const suggestBox = document.getElementById("suggest");
+    let sgRows = [], sgIndex = 0;
+
+    // best-first: prefix match, then active labs, then size
+    const sgCmp = (a, b) => a.prefix - b.prefix || b.s.active - a.s.active || b.s.count - a.s.count;
+    function buildSuggestions(text) {
+      const f = text.trim().toLowerCase();
+      if (!f) return [];
+      const best = { method: [], organism: [], institution: [], lab: [] };
+      const total = { method: 0, organism: 0, institution: 0, lab: 0 };
+      for (const item of suggest) {
+        const at = item.lower.indexOf(f);
+        if (at < 0) continue;
+        total[item.kind]++;
+        const arr = best[item.kind], cap = SG_CAP[item.kind], cand = { s: item, prefix: at === 0 ? 0 : 1 };
+        let i = arr.length;
+        while (i > 0 && sgCmp(cand, arr[i - 1]) < 0) i--;
+        if (i >= cap) continue;
+        arr.splice(i, 0, cand);
+        if (arr.length > cap) arr.length = cap;
+      }
+      const out = [];
+      for (const [kind, label] of SG_GROUPS) {
+        if (!best[kind].length) continue;
+        out.push({ head: label, more: total[kind] - best[kind].length });
+        for (const x of best[kind]) out.push(x.s);
+      }
+      return out;
+    }
+
+    function renderSuggest() {
+      const text = qEl.value.trim();
+      sgRows = []; sgIndex = 0;
+      if (!text) { closeSuggest(); return; }
+      let html = `<div class="sg-head">Search</div>`;
+      sgRows.push({ kind: "text", label: text });
+      html += `<div class="sg-row" data-i="0"><span class="sg-label">Search for “${escapeHTML(text)}”</span>` +
+              `<span class="sg-sub">names, topics, institutions, paper titles</span></div>`;
+      for (const it of buildSuggestions(text)) {
+        if (it.head) {
+          html += `<div class="sg-head">${escapeHTML(it.head)}${it.more > 0 ? ` <span class="muted">+${fmtInt(it.more)} more</span>` : ""}</div>`;
+          continue;
+        }
+        const i = sgRows.push(it) - 1;
+        const on = (it.kind === "method" && q.methods.has(it.id)) || (it.kind === "organism" && q.organisms.has(it.id));
+        html += `<div class="sg-row${on ? " chosen" : ""}" data-i="${i}"><span class="sg-label">${escapeHTML(it.label)}</span>` +
+                `<span class="sg-sub">${escapeHTML(it.sub || "")}</span>` +
+                `<span class="sg-n">${fmtInt(it.count)}</span></div>`;
+      }
+      // If what was typed IS a tag or institution name, preselect that row:
+      // typing "patch clamp" + Enter should add the method, not a text filter.
+      const exact = sgRows.findIndex((r) => r.kind !== "text" && r.label.toLowerCase() === text.toLowerCase());
+      if (exact > 0) sgIndex = exact;
+      suggestBox.innerHTML = html;
+      suggestBox.hidden = false;
+      // Fixed, positioned against the input: the sidebar scrolls and would clip it.
+      const r = qEl.getBoundingClientRect();
+      suggestBox.style.left = `${r.left}px`;
+      suggestBox.style.top = `${r.bottom + 4}px`;
+      suggestBox.style.width = `${r.width}px`;
+      qEl.setAttribute("aria-expanded", "true");
+      markSuggest();
+    }
+    function markSuggest() {
+      for (const row of suggestBox.querySelectorAll(".sg-row")) {
+        const on = +row.dataset.i === sgIndex;
+        row.classList.toggle("on", on);
+        row.setAttribute("aria-selected", on ? "true" : "false");
+        if (on) row.scrollIntoView({ block: "nearest" });
       }
     }
-    document.querySelectorAll("[data-clear]").forEach((el) => el.addEventListener("click", () => {
-      const g = el.dataset.clear; q[g].clear();
-      chipBoxes[g].querySelectorAll(".chip").forEach((x) => x.classList.remove("active"));
-      refresh();
-    }));
+    function closeSuggest() {
+      suggestBox.hidden = true; suggestBox.innerHTML = "";
+      sgRows = []; sgIndex = 0;
+      qEl.setAttribute("aria-expanded", "false");
+    }
+    function acceptSuggestion(it) {
+      if (!it) return;
+      if (it.kind === "text") { if (!q.texts.includes(it.label)) q.texts.push(it.label); }
+      else if (it.kind === "method") { if (q.methods.has(it.id)) q.methods.delete(it.id); else q.methods.add(it.id); }
+      else if (it.kind === "organism") { if (q.organisms.has(it.id)) q.organisms.delete(it.id); else q.organisms.add(it.id); }
+      else if (it.kind === "institution") { q.insts.add(it.id); syncInstFacet(); }
+      else if (it.kind === "lab") q.pinned.add(it.id);
+      qEl.value = ""; closeSuggest(); syncChipStates();
+      runQuery();
+      if (it.kind === "lab") openGraph(it.id);
+    }
+    qEl.addEventListener("input", renderSuggest);
+    qEl.addEventListener("focus", () => { if (qEl.value.trim()) renderSuggest(); });
+    qEl.addEventListener("blur", () => setTimeout(closeSuggest, 150));
+    qEl.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        if (!sgRows.length) return;
+        e.preventDefault();
+        sgIndex = (sgIndex + (e.key === "ArrowDown" ? 1 : sgRows.length - 1)) % sgRows.length;
+        markSuggest();
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        acceptSuggestion(sgRows[sgIndex]);
+      } else if (e.key === "Escape") {
+        if (!suggestBox.hidden) { e.stopPropagation(); closeSuggest(); }
+      }
+    });
+    suggestBox.addEventListener("mousedown", (e) => {          // before blur
+      const row = e.target.closest(".sg-row");
+      if (!row) return;
+      e.preventDefault();
+      acceptSuggestion(sgRows[+row.dataset.i]);
+    });
+
+    // ------------------------------------------------------------------
+    // Legend: the browsable catalogue of every tag, chips apply filters
+    // ------------------------------------------------------------------
+    const legendEl = document.getElementById("legend");
+    const chipHTML = (t, g) => `<span class="chip" data-tag="${t.id}" data-group="${g}" title="${escapeHTML(t.label)}">` +
+      `${escapeHTML(t.label)}<span class="n">${fmtInt(t.pis)}</span></span>`;
+    function buildLegend() {
+      const body = document.getElementById("legendBody");
+      if (!tags) { body.innerHTML = `<p class="facet-hint">No tags file. Run <code>pipeline/enrich_text.py tag</code>.</p>`; return; }
+      let html = "";
+      for (const [g, title] of [["methods", "Methods"], ["organisms", "Model systems"]]) {
+        html += `<h4 class="lm-h">${title} <span class="muted">${tagList[g].length}</span>
+          <span class="clear" data-clear="${g}">clear</span></h4>`;
+        const order = (tags.meta.categories && tags.meta.categories[g]) || [...new Set(tagList[g].map((t) => t.category))];
+        for (const cat of order) {
+          const inCat = tagList[g].filter((t) => (t.category || "Other") === cat).sort((a, b) => b.pis - a.pis);
+          if (!inCat.length) continue;
+          html += `<div class="lm-cat"><span class="lm-cat-h">${escapeHTML(cat)}</span>
+            <div class="facet-chips">${inCat.map((t) => chipHTML(t, g)).join("")}</div></div>`;
+        }
+      }
+      body.innerHTML = html;
+    }
+    function openLegend() {
+      if (!document.getElementById("legendBody").children.length) buildLegend();
+      legendEl.hidden = false; syncChipStates(); updateFacetCounts();
+    }
+    const closeLegend = () => { legendEl.hidden = true; };
+    document.getElementById("legendBtn").addEventListener("click", () => legendEl.hidden ? openLegend() : closeLegend());
+    document.getElementById("legendClose").addEventListener("click", closeLegend);
+    legendEl.addEventListener("click", (e) => {
+      if (e.target === legendEl) { closeLegend(); return; }
+      const clear = e.target.closest("[data-clear]");
+      if (clear) { q[clear.dataset.clear].clear(); syncChipStates(); runQuery(); return; }
+      const chip = e.target.closest(".chip[data-tag]");
+      if (!chip) return;
+      const g = chip.dataset.group, id = chip.dataset.tag;
+      if (q[g].has(id)) q[g].delete(id); else q[g].add(id);
+      syncChipStates(); runQuery();
+    });
+
+    // Chips live in the legend and in the landing quick-picks.
+    function syncChipStates() {
+      for (const chip of document.querySelectorAll(".chip[data-tag][data-group]")) {
+        chip.classList.toggle("active", q[chip.dataset.group].has(chip.dataset.tag));
+      }
+    }
     document.getElementById("requireAll").addEventListener("change", (e) => { q.requireAll = e.target.checked; refresh(); });
 
     function updateFacetCounts() {
       if (!tags) return;
       const active = hasQuery();
-      for (const g of ["methods", "organisms"]) {
-        for (const el of chipBoxes[g].querySelectorAll(".chip")) {
-          const set = byTag.get(el.dataset.tag) || new Set();
+      const cache = new Map();
+      for (const chip of document.querySelectorAll(".chip[data-tag][data-group]")) {
+        if (chip.closest("#legend") && legendEl.hidden) continue;      // legend is closed, nothing to update
+        const id = chip.dataset.tag;
+        if (!cache.has(id)) {
+          const set = byTag.get(id) || new Set();
           let n;
           if (!active) n = set.size;
           else if (set.size < resultSet.size) { n = 0; for (const x of set) if (resultSet.has(x)) n++; }
           else { n = 0; for (const x of resultSet) if (set.has(x)) n++; }
-          el.querySelector(".n").textContent = fmtInt(n);
-          el.classList.toggle("zero", active && n === 0);
+          cache.set(id, n);
         }
+        const n = cache.get(id);
+        chip.querySelector(".n").textContent = fmtInt(n);
+        chip.classList.toggle("zero", active && n === 0);
       }
     }
 
@@ -437,7 +934,7 @@
       citySel.innerHTML = `<option value="">Any city</option>`;
       const m = citiesByCC.get(q.cc);
       citySel.disabled = !m;
-      if (!m) return;
+      if (!m) { q.city = ""; return; }
       for (const [city, n] of [...m.entries()].sort((a, b) => b[1] - a[1])) {
         const o = document.createElement("option");
         o.value = city; o.textContent = `${city} (${fmtInt(n)})`;
@@ -449,8 +946,30 @@
     ccSel.addEventListener("change", () => { q.cc = ccSel.value; q.city = ""; fillCities(); refresh(); });
     citySel.addEventListener("change", () => { q.city = citySel.value; refresh(); });
 
-    const qEl = document.getElementById("q");
-    qEl.addEventListener("input", () => { q.text = qEl.value.trim(); refresh(); });
+    const instGroup = document.getElementById("instGroup"), instCoEl = document.getElementById("instCo");
+    function syncInstFacet() {
+      instGroup.hidden = !q.insts.size;
+      if (!q.insts.size) return;
+      document.getElementById("instFacet").innerHTML = [...q.insts].map((iid) => {
+        const inst = instNode(iid);
+        return `<div class="inst-row" data-inst="${escapeHTML(iid)}"><b>${escapeHTML(instLabel(iid))}</b>` +
+               `${inst && placeOf(inst) ? ` <span class="muted">· ${escapeHTML(placeOf(inst))}</span>` : ""}` +
+               `<b class="x" title="Remove">×</b></div>`;
+      }).join("");
+      instCoEl.checked = q.instCo;
+    }
+    document.getElementById("instFacet").addEventListener("click", (e) => {
+      const row = e.target.closest(".inst-row");
+      if (!row || !e.target.classList.contains("x")) return;
+      q.insts.delete(row.dataset.inst); syncInstFacet(); runQuery();
+    });
+    function setInstFacet(iid, withCo) {
+      if (iid) q.insts.add(iid); else q.insts.clear();
+      if (withCo !== undefined) q.instCo = !!withCo;
+      syncInstFacet(); runQuery();
+    }
+    instCoEl.addEventListener("change", () => { q.instCo = instCoEl.checked; refresh(); });
+    document.getElementById("clearInst").addEventListener("click", () => setInstFacet("", false));
 
     const statusBox = document.getElementById("statusFilters");
     for (const [key, label] of Object.entries(STATUS_LABELS)) {
@@ -462,6 +981,7 @@
                     `${label} <span style="color:var(--muted)">(${fmtInt(n)})</span>`;
       statusBox.appendChild(l);
     }
+    const syncStatus = () => statusBox.querySelectorAll("input").forEach((b) => { b.checked = q.statuses.has(b.dataset.status); });
     statusBox.addEventListener("change", (e) => {
       const s = e.target.dataset.status;
       if (!s) return;
@@ -469,28 +989,88 @@
       refresh();
     });
     document.getElementById("showFunders").addEventListener("change", (e) => { q.showFunders = e.target.checked; refresh({ fit: false }); });
-    document.getElementById("showCareer").addEventListener("change", (e) => { q.showCareer = e.target.checked; renderer.refresh(); });
+    document.getElementById("showCareer").addEventListener("change", (e) => { q.showCareer = e.target.checked; paint(); });
+    document.getElementById("showCo").addEventListener("change", (e) => { q.showCo = e.target.checked; refresh({ fit: false }); });
     const mw = document.getElementById("minWorks"), mwVal = document.getElementById("minWorksVal");
     mw.addEventListener("input", (e) => { q.minWorks = +e.target.value; mwVal.textContent = e.target.value; refresh({ fit: false }); });
-    document.getElementById("fitBtn").addEventListener("click", () => { setFocus(null); fitToVisible(); });
-    document.getElementById("clearAll").addEventListener("click", () => {
-      q.text = ""; qEl.value = ""; q.methods.clear(); q.organisms.clear(); q.cc = ""; q.city = ""; q.pinned.clear();
-      ccSel.value = ""; fillCities();
-      document.querySelectorAll(".facet-chips .chip.active").forEach((x) => x.classList.remove("active"));
-      setFocus(null); runQuery();
-    });
+    document.getElementById("sortSel").addEventListener("change", (e) => { q.sort = e.target.value; sortResult(); renderResults(); writeHash(); });
+    // Click fits the cluster; shift-click fits everything including outliers.
+    document.getElementById("fitBtn").addEventListener("click", (e) => { setFocus(null); fitToVisible({ all: e.shiftKey }); });
+    document.getElementById("zoomIn").addEventListener("click", () => camera && camera.animatedZoom({ duration: 250 }));
+    document.getElementById("zoomOut").addEventListener("click", () => camera && camera.animatedUnzoom({ duration: 250 }));
 
+    function clearAll() {
+      q.texts = []; qEl.value = ""; q.methods.clear(); q.organisms.clear(); q.cc = ""; q.city = ""; q.pinned.clear();
+      q.insts.clear(); q.instCo = false; q.requireAll = false; document.getElementById("requireAll").checked = false;
+      closeSuggest();
+      ccSel.value = ""; fillCities(); syncChipStates(); syncInstFacet();
+      closeDetail(); runQuery();
+    }
+    document.getElementById("clearAll").addEventListener("click", clearAll);
+
+    // Landing suggestions: a few common tags, clickable.
     document.getElementById("emptyCounts").textContent =
       `${fmtInt((c.pis_by_status || {}).active)} active labs · ` +
       (tags ? `${tagList.methods.length} methods · ${tagList.organisms.length} model systems · ` : "") +
       `${countryList.length} countries · ${fmtInt([...citiesByCC.values()].reduce((a, m) => a + m.size, 0))} cities`;
+    if (tags) {
+      const pick = (g, ids) => ids.map((id) => tagList[g].find((t) => t.id === id)).filter(Boolean)
+        .map((t) => `<span class="chip" data-tag="${t.id}" data-group="${g}">${escapeHTML(t.label)}<span class="n">${fmtInt(t.pis)}</span></span>`).join("");
+      document.getElementById("suggestions").innerHTML =
+        pick("methods", ["patch_clamp", "two_photon", "optogenetics", "fmri", "em_connectomics"]) +
+        pick("organisms", ["mouse", "drosophila", "zebrafish", "macaque"]);
+      document.getElementById("suggestions").addEventListener("click", (e) => {
+        const chip = e.target.closest(".chip[data-tag]"); if (!chip) return;
+        const g = chip.dataset.group, id = chip.dataset.tag;
+        if (q[g].has(id)) q[g].delete(id); else q[g].add(id);
+        syncChipStates(); runQuery();
+      });
+    }
 
-    // ---- results list ----
+    // ------------------------------------------------------------------
+    // Active-filter pills
+    // ------------------------------------------------------------------
+    const pillsEl = document.getElementById("pills");
+    function renderPills() {
+      const p = [];
+      for (const t of q.texts) p.push([`text:${t}`, `“${t}”`]);
+      for (const iid of q.insts) p.push([`inst:${iid}`, `${instLabel(iid)}${q.instCo ? " + co-author" : ""}`]);
+      for (const t of q.methods) p.push([`m:${t}`, tagLabel.get(t) || t]);
+      for (const t of q.organisms) p.push([`o:${t}`, tagLabel.get(t) || t]);
+      if (q.requireAll && q.methods.size + q.organisms.size > 1) p.push(["all", "all tags required"]);
+      if (q.cc) p.push(["cc", ccNames.get(q.cc) || countryName(q.cc)]);
+      if (q.city) p.push(["city", q.city]);
+      const st = [...q.statuses].sort().join(",");
+      if (hasQuery() && st !== "active") p.push(["status", [...q.statuses].map((s) => STATUS_LABELS[s]).join(" + ") || "no status"]);
+      if (q.minWorks > 2) p.push(["minWorks", `≥ ${q.minWorks} papers`]);
+      for (const id of q.pinned) p.push([`pin:${id}`, `📌 ${(byId.get(id) || {}).label || id}`]);
+      pillsEl.innerHTML = p.map(([k, label]) => `<span class="pill" data-k="${escapeHTML(k)}">${escapeHTML(label)}<b title="Remove">×</b></span>`).join("");
+      pillsEl.hidden = !p.length;
+    }
+    pillsEl.addEventListener("click", (e) => {
+      const pill = e.target.closest(".pill"); if (!pill || e.target.tagName !== "B") return;
+      const k = pill.dataset.k;
+      if (k.startsWith("text:")) q.texts = q.texts.filter((t) => t !== k.slice(5));
+      else if (k.startsWith("inst:")) { q.insts.delete(k.slice(5)); syncInstFacet(); }
+      else if (k.startsWith("m:")) q.methods.delete(k.slice(2));
+      else if (k.startsWith("o:")) q.organisms.delete(k.slice(2));
+      else if (k === "all") { q.requireAll = false; document.getElementById("requireAll").checked = false; }
+      else if (k === "cc") { q.cc = ""; q.city = ""; ccSel.value = ""; fillCities(); }
+      else if (k === "city") { q.city = ""; citySel.value = ""; }
+      else if (k === "status") { q.statuses = new Set(["active"]); syncStatus(); }
+      else if (k === "minWorks") { q.minWorks = 2; mw.value = "2"; mwVal.textContent = "2"; }
+      else if (k.startsWith("pin:")) q.pinned.delete(k.slice(4));
+      syncChipStates(); runQuery();
+    });
+
+    // ------------------------------------------------------------------
+    // Result cards
+    // ------------------------------------------------------------------
     const resultsEl = document.getElementById("results");
     const moreBtn = document.getElementById("moreBtn");
-    const PAGE = 100;
-    // Under a place filter, name the affiliation that is actually in that
-    // place (a joint appointment's primary may be abroad).
+    const emptyEl = document.getElementById("empty");
+    const PAGE = 60;
+    // Under a place filter, name the affiliation that is actually in that place.
     function shownInst(n) {
       const prim = byId.get(n.institution);
       if (!q.cc || !prim || (prim.cc === q.cc && (!q.city || prim.city === q.city))) return prim;
@@ -500,139 +1080,253 @@
       }
       return prim;
     }
-    function rowHTML(id) {
+    function coMatches(id) {
+      const rec = tagRec(id);
+      if (!rec || !rec.ca) return [];
+      const ts = terms();
+      return rec.ca.filter((ca) => q.insts.has(ca[0]) || (ts.length && ts.some((t) => instLabel(ca[0]).toLowerCase().includes(t))));
+    }
+    const highlight = (text, ts) => {
+      let out = escapeHTML(text);
+      for (const t of ts) if (t) out = out.replace(new RegExp(`(${t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "ig"), "<mark>$1</mark>");
+      return out;
+    };
+    function cardHTML(id) {
       const n = byId.get(id);
       const inst = shownInst(n);
       const rec = tagRec(id);
+      const ts = terms();
       const sel = new Set([...q.methods, ...q.organisms]);
-      const chips = rec ? tagChipsHTML(rec, tagLabel, 4, sel)
-                        : (tags ? `<span class="facet-hint">no tagged works ${tags.meta.years[0]}–${String(tags.meta.years.at(-1)).slice(2)}</span>` : "");
-      return `<div class="rc" data-id="${escapeHTML(id)}">
-        <div class="rc-name"><span class="swatch" style="background:${STATUS_COLORS[n.status] || NODE_COLORS.pi}"></span>${escapeHTML(n.label)}</div>
-        <div class="rc-where">${escapeHTML(inst ? inst.label : "")}${inst && placeOf(inst) ? " · " + escapeHTML(placeOf(inst)) : ""}</div>
-        ${chips ? `<div class="tags">${chips}</div>` : ""}
-      </div>`;
+      const chips = rec ? tagChipsHTML(rec, tagLabel, 6, sel) : "";
+      const co = coMatches(id);
+      const wl = (works && works.pis[id]) || [];
+      const titleHits = ts.length ? wl.filter((w) => ts.every((t) => w[1].toLowerCase().includes(t))) : [];
+      const col = STATUS_COLORS[n.status] || NODE_COLORS.pi;
+      return `<article class="result-card${q.sel === id ? " sel" : ""}" data-id="${escapeHTML(id)}" tabindex="0">
+        <div class="rc-top">
+          <h3>${highlight(n.label, ts)}</h3>
+          <span class="inst">${highlight(inst ? inst.label : "", ts)}${inst && placeOf(inst) ? " · " + highlight(placeOf(inst), ts) : ""}</span>
+        </div>
+        <div class="rc-topic">${highlight(n.primaryTopic || "", ts)}</div>
+        <div class="tags">
+          <span class="tag" style="background:${col}22;color:${col}">${escapeHTML(STATUS_LABELS[n.status] || "")}</span>
+          <span class="tag">${yearSpan(n)}</span>
+          ${chips}
+        </div>
+        ${co.length ? `<div class="rc-co">Co-author affiliation: ${co.map((ca) => `${highlight(instLabel(ca[0]), ts)} (${ca[1]} papers)`).join(", ")}</div>` : ""}
+        ${titleHits.length ? `<div class="rc-pubs">${titleHits.slice(0, 2).map((w) => `<div><span class="yr">${w[0]}</span>${highlight(w[1], ts)}</div>`).join("")}
+          ${titleHits.length > 2 ? `<div class="muted">+ ${titleHits.length - 2} more matching title${titleHits.length - 2 === 1 ? "" : "s"}</div>` : ""}</div>` : ""}
+        <div class="rc-metrics">${fmtInt(n.works)} last-authored${n.citations ? ` · ${fmtInt(n.citations)} citations` : ""}
+          ${rec ? ` · ${fmtInt(rec.n)} papers ${win}` : ""}
+          <span class="rc-cta">Show in graph →</span></div>
+      </article>`;
     }
     function renderResults() {
-      const count = document.getElementById("resultCount"), note = document.getElementById("resultNote");
+      const count = document.getElementById("resultCount");
+      const graphBtn = document.getElementById("graphBtn");
       if (!hasQuery()) {
-        count.textContent = "No search yet"; note.textContent = "";
-        resultsEl.innerHTML = ""; moreBtn.hidden = true; shown = 0; return;
+        count.textContent = "Search to begin";
+        emptyEl.hidden = false; resultsEl.innerHTML = ""; moreBtn.hidden = true; shown = 0;
+        graphBtn.hidden = true;
+        return;
       }
+      emptyEl.hidden = true;
       const nInst = new Set(result.map((id) => byId.get(id).institution)).size;
-      count.textContent = `${fmtInt(result.length)} matching lab${result.length === 1 ? "" : "s"} · ${fmtInt(nInst)} institution${nInst === 1 ? "" : "s"}`;
-      note.textContent = "";
+      count.textContent = `${fmtInt(result.length)} lab${result.length === 1 ? "" : "s"} · ${fmtInt(nInst)} institution${nInst === 1 ? "" : "s"}`;
+      graphBtn.hidden = !result.length || !graphPane.hidden;
       shown = Math.min(PAGE, result.length);
-      resultsEl.innerHTML = result.slice(0, shown).map(rowHTML).join("") ||
-        `<div class="facet-hint" style="padding:8px 4px">Nothing matches. Loosen a facet or untick “require all”.</div>`;
+      resultsEl.innerHTML = result.slice(0, shown).map(cardHTML).join("") ||
+        `<div class="facet-hint" style="padding:8px 4px">Nothing matches. Remove a filter, or untick “require all”.</div>`;
       moreBtn.hidden = shown >= result.length;
     }
     moreBtn.addEventListener("click", () => {
       const next = Math.min(shown + PAGE, result.length);
-      resultsEl.insertAdjacentHTML("beforeend", result.slice(shown, next).map(rowHTML).join(""));
+      resultsEl.insertAdjacentHTML("beforeend", result.slice(shown, next).map(cardHTML).join(""));
       shown = next; moreBtn.hidden = shown >= result.length;
     });
+    function selectCard(id) {
+      q.sel = id;
+      for (const card of resultsEl.querySelectorAll(".result-card")) card.classList.toggle("sel", card.dataset.id === id);
+      openGraph(id);
+    }
     resultsEl.addEventListener("click", (e) => {
-      const row = e.target.closest(".rc");
-      if (!row) return;
-      resultsEl.querySelectorAll(".rc.sel").forEach((x) => x.classList.remove("sel"));
-      row.classList.add("sel");
-      setFocus(row.dataset.id);
-      zoomTo(row.dataset.id, 0.3);
+      if (e.target.closest("a")) return;                       // let real links work
+      const card = e.target.closest(".result-card");
+      if (card) selectCard(card.dataset.id);
     });
+    resultsEl.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter") return;
+      const card = e.target.closest(".result-card");
+      if (card) selectCard(card.dataset.id);
+    });
+    resultsEl.addEventListener("mouseover", (e) => {
+      if (!renderer) return;
+      const card = e.target.closest(".result-card");
+      const id = card ? card.dataset.id : null;
+      if (id !== hoverId && (!id || visible.has(id))) { hoverId = id; paint({ skipIndexation: true }); }
+    });
+    resultsEl.addEventListener("mouseleave", () => { if (hoverId) { hoverId = null; paint({ skipIndexation: true }); } });
 
-    // ---- focus / selection ----
+    // ------------------------------------------------------------------
+    // Detail panel (inside the graph pane) with back navigation
+    // ------------------------------------------------------------------
     const detail = document.getElementById("detail");
+    const detailStack = [];
     function setFocus(id) {
-      if (!id) { focusSet = null; detail.classList.remove("show"); renderer.refresh(); return; }
+      if (!renderer) return;
+      if (!id || !graph.hasNode(id) || !visible.has(id)) { focusSet = null; paint({ skipIndexation: true }); return; }
       const set = new Set([id]);
       graph.forEachNeighbor(id, (nb) => set.add(nb));
       focusSet = set;
-      detail.innerHTML = detailHTML(byId.get(id), { byId, piByInst, tagRec, tagLabel, works, tags,
-                                                    terms: q.text.toLowerCase().split(/\s+/).filter(Boolean) });
-      detail.classList.add("show");
-      renderer.refresh();
+      paint({ skipIndexation: true });
     }
     function zoomTo(id, ratio) {
+      if (!renderer) return;
       const p = renderer.getNodeDisplayData(id);
       if (p) camera.animate({ x: p.x, y: p.y, ratio: Math.min(camera.ratio, ratio) }, { duration: 400 });
     }
-    renderer.on("clickNode", ({ node }) => { setFocus(node); zoomTo(node, 0.35); });
-    renderer.on("clickStage", () => setFocus(null));
-
-    // ---- hover tooltip ----
-    const tooltip = document.getElementById("tooltip");
-    renderer.on("enterNode", ({ node }) => {
-      tooltip.innerHTML = tooltipHTML(byId.get(node), tagRec(node), tagLabel);
-      tooltip.style.display = "block";
-    });
-    renderer.on("moveBody", () => { tooltip.style.display = "none"; });
-    renderer.getMouseCaptor().on("mousemovebody", (e) => {
-      if (tooltip.style.display === "block") {
-        tooltip.style.left = e.x + 14 + "px";
-        tooltip.style.top = e.y + 14 + "px";
+    function renderDetail() {
+      const id = detailStack.at(-1);
+      if (!id) { detail.classList.remove("show"); return; }
+      const n = instNode(id) || byId.get(id);
+      detail.innerHTML = detailHTML(n, {
+        byId, labsAt, coByInst, tagRec, tagLabel, tagCat, works, tags, win, instLabel, instNode,
+        terms: terms(), canBack: detailStack.length > 1, visible,
+        graphHas: (x) => (graph && graph.hasNode(x)) || !!coInst[x],
+      });
+      const wasOpen = detail.classList.contains("show");
+      detail.classList.add("show");
+      detail.scrollTop = 0;
+      if (!wasOpen && renderer && !graphPane.hidden) { renderer.resize(); paint(); }
+      document.getElementById("graphTitle").textContent = n.type === "pi" ? n.label : instLabel(n.id);
+    }
+    function openNode(id, { zoom = false, push = true } = {}) {
+      if (!id) return;
+      if (push && detailStack.at(-1) !== id) detailStack.push(id);
+      if (detailStack.length > 30) detailStack.shift();
+      if (byId.get(id) && byId.get(id).type === "pi") {
+        q.sel = id;
+        for (const card of resultsEl.querySelectorAll(".result-card")) card.classList.toggle("sel", card.dataset.id === id);
       }
-    });
-    renderer.on("leaveNode", () => { tooltip.style.display = "none"; });
+      setFocus(id);
+      renderDetail();
+      if (zoom && visible.has(id)) zoomTo(id, 0.35);
+      writeHash();
+    }
+    function closeDetail() {
+      const wasOpen = detail.classList.contains("show");
+      detailStack.length = 0; renderDetail(); setFocus(null);
+      document.getElementById("graphTitle").textContent = "Graph";
+      if (wasOpen && renderer && !graphPane.hidden) { renderer.resize(); paint(); }
+    }
+    function back() { detailStack.pop(); const id = detailStack.at(-1); if (id) { setFocus(id); renderDetail(); } else closeDetail(); }
 
-    // ---- URL state ----
-    // #m=two_photon,optogenetics&o=mouse&cc=GB&city=Oxford&t=cortex&s=active,winding_down&pin=A5…
+    detail.addEventListener("click", (e) => {
+      const el = e.target.closest("[data-act]");
+      if (!el) return;
+      const act = el.dataset.act, id = el.dataset.id;
+      if (act === "close") closeDetail();
+      else if (act === "back") back();
+      else if (act === "open") openNode(id, { zoom: true });
+      else if (act === "pin") { q.pinned.add(id); runQuery({ fit: false }); openNode(id, { zoom: true, push: false }); }
+      else if (act === "labs-here") { setInstFacet(id, false); openNode(id, { push: false }); }
+      else if (act === "labs-here-co") { setInstFacet(id, true); openNode(id, { push: false }); }
+      else if (act === "zoom") { if (visible.has(id)) zoomTo(id, 0.2); }
+      else if (act === "more") { el.previousElementSibling.hidden = false; el.remove(); }
+    });
+    detail.addEventListener("input", (e) => {
+      if (!e.target.classList.contains("pub-filter")) return;
+      const f = e.target.value.trim().toLowerCase();
+      detail.querySelectorAll(".pubs").forEach((ul) => { if (f) ul.hidden = false; for (const li of ul.children) li.hidden = !!f && !li.dataset.t.includes(f); });
+      const more = detail.querySelector(".pubs-more"); if (more) more.hidden = !!f;
+    });
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && !legendEl.hidden) { closeLegend(); return; }
+      if (e.key === "Escape") {
+        if (detailStack.length > 1) back();
+        else if (detailStack.length === 1) closeDetail();
+        else if (!graphPane.hidden) closeGraph();
+      }
+      if (e.key === "/" && document.activeElement.tagName !== "INPUT") { e.preventDefault(); qEl.focus(); }
+    });
+
+    // ------------------------------------------------------------------
+    // URL state
+    // #t=cortex&m=two_photon&o=mouse&cc=GB&city=Oxford&inst=I…&co=1&sel=A…&graph=1
+    // ------------------------------------------------------------------
     let writingHash = false;
     function writeHash() {
       const p = new URLSearchParams();
-      if (q.text) p.set("t", q.text);
+      if (q.texts.length) p.set("t", q.texts.join("|"));
       if (q.methods.size) p.set("m", [...q.methods].join(","));
       if (q.organisms.size) p.set("o", [...q.organisms].join(","));
       if (q.requireAll) p.set("all", "1");
       if (q.cc) p.set("cc", q.cc);
       if (q.city) p.set("city", q.city);
+      if (q.insts.size) p.set("inst", [...q.insts].join(","));
+      if (q.instCo) p.set("co", "1");
+      if (q.showCo) p.set("links", "co");
       if (q.pinned.size) p.set("pin", [...q.pinned].join(","));
+      if (q.sort !== "relevance") p.set("sort", q.sort);
+      if (q.minWorks > 2) p.set("min", q.minWorks);
       const s = [...q.statuses].sort().join(",");
       if (s !== "active") p.set("s", s);
+      if (!graphPane.hidden) p.set("graph", "1");
+      const selected = detailStack.at(-1) || q.sel;
+      if (selected && !graphPane.hidden) p.set("sel", selected);
       writingHash = true;
       history.replaceState(null, "", "#" + p.toString());
       writingHash = false;
     }
     function readHash() {
       const raw = decodeURIComponent(location.hash.replace(/^#/, "")).trim();
-      if (!raw) return;
-      if (/^[AIF]\d+$/.test(raw)) { q.pinned = new Set([raw]); return raw; }   // legacy #<id> from search.html
+      if (!raw) return null;
+      if (/^[AIF]\d+$/.test(raw)) {                         // bare #<id> from an old link
+        if (raw.startsWith("A")) { q.pinned = new Set([raw]); q.sel = raw; return raw; }
+        if (raw.startsWith("I")) { q.insts.add(raw); syncInstFacet(); return raw; }
+        return null;
+      }
       const p = new URLSearchParams(raw);
-      q.text = p.get("t") || ""; qEl.value = q.text;
-      q.methods = new Set((p.get("m") || "").split(",").filter((t) => byTag.has(t) || tagLabel.has(t)));
-      q.organisms = new Set((p.get("o") || "").split(",").filter((t) => byTag.has(t) || tagLabel.has(t)));
+      q.texts = (p.get("t") || "").split("|").map((t) => t.trim()).filter(Boolean);
+      q.methods = new Set((p.get("m") || "").split(",").filter((t) => tagLabel.has(t)));
+      q.organisms = new Set((p.get("o") || "").split(",").filter((t) => tagLabel.has(t)));
       q.requireAll = p.get("all") === "1"; document.getElementById("requireAll").checked = q.requireAll;
       q.cc = ccCount.has(p.get("cc")) ? p.get("cc") : ""; ccSel.value = q.cc;
       q.city = p.get("city") || ""; fillCities();
+      q.insts = new Set((p.get("inst") || "").split(",").filter((id) => id && instNode(id)));
+      q.instCo = p.get("co") === "1"; syncInstFacet();
+      q.showCo = p.get("links") === "co"; document.getElementById("showCo").checked = q.showCo;
       q.pinned = new Set((p.get("pin") || "").split(",").filter((id) => byId.has(id)));
-      if (p.get("s")) {
-        q.statuses = new Set(p.get("s").split(",").filter((s) => STATUS_LABELS[s]));
-        statusBox.querySelectorAll("input").forEach((b) => { b.checked = q.statuses.has(b.dataset.status); });
-      }
-      for (const g of ["methods", "organisms"]) {
-        chipBoxes[g].querySelectorAll(".chip").forEach((x) => x.classList.toggle("active", q[g].has(x.dataset.tag)));
-      }
-      return [...q.pinned][0] || null;
+      q.sort = p.get("sort") || "relevance"; document.getElementById("sortSel").value = q.sort;
+      q.minWorks = Math.max(2, +p.get("min") || 2); mw.value = q.minWorks; mwVal.textContent = q.minWorks;
+      if (p.get("s")) { q.statuses = new Set(p.get("s").split(",").filter((s) => STATUS_LABELS[s])); syncStatus(); }
+      syncChipStates();
+      q.sel = p.get("sel") || "";
+      return p.get("graph") === "1" || q.sel ? (q.sel || result[0] || true) : null;
     }
-    function openHash() {
-      const pinned = readHash();
+    async function openHash() {
+      const target = readHash();
       runQuery();
-      if (pinned && byId.has(pinned)) { setFocus(pinned); zoomTo(pinned, 0.2); }
+      if (target) await openGraph(typeof target === "string" ? target : (q.sel || result[0]));
     }
     window.addEventListener("hashchange", () => { if (!writingHash) openHash(); });
 
-    renderer.refresh();
-    openHash();
+    await openHash();
+    window.__nle = { q, runQuery, openNode, openGraph, closeGraph, selectCard, pickNode,
+                     fitToVisible, relaxOverlaps, offsets: () => nodeOffset,
+                     buildSuggestions, acceptSuggestion, openLegend, closeLegend, sgRows: () => sgRows,
+                     get renderer() { return renderer; }, visible: () => visible, detailStack, result: () => result };
   })();
 
   function tooltipHTML(n, rec, tagLabel) {
     if (!n) return "";
     const name = escapeHTML(n.label);
     if (n.type === "institution") {
-      return `<b>${name}</b><br>${escapeHTML(n.instType || "")}${placeOf(n) ? " · " + escapeHTML(placeOf(n)) : ""}`;
+      return `<b>${name}</b><br>${escapeHTML(n.instType || "")}${placeOf(n) ? " · " + escapeHTML(placeOf(n)) : ""}<br><span class="muted">Click for labs here</span>`;
     }
     if (n.type === "funder") return `<b>${name}</b><br>funder`;
-    const chips = rec ? tagChipsHTML(rec, tagLabel, 3) : "";
+    const chips = rec ? tagChipsHTML(rec, tagLabel, 4) : "";
     return `<b>${name}</b><br>${escapeHTML(n.primaryTopic || "")}<br>` +
            `${fmtInt(n.works)} last-authored · ${yearSpan(n)} · ${escapeHTML(STATUS_LABELS[n.status] || "")}` +
            (chips ? `<div class="tags" style="margin:6px 0 0">${chips}</div>` : "");
@@ -640,86 +1334,145 @@
 
   function detailHTML(n, ctx) {
     if (!n) return "";
-    const { byId, piByInst, tagRec, tagLabel, works, tags, terms } = ctx;
-    const close = `<span class="close" onclick="document.getElementById('detail').classList.remove('show')">×</span>`;
+    const { byId, labsAt, coByInst, tagRec, tagLabel, tagCat, works, tags, win, instLabel, instNode, terms, canBack, visible, graphHas } = ctx;
     const color = n.type === "pi" ? (STATUS_COLORS[n.status] || NODE_COLORS.pi) : NODE_COLORS[n.type];
-    const kind = `<span class="kind" style="background:${color}22;color:${color}">${n.type}</span>`;
+    const head = `<div class="d-head">
+        ${canBack ? `<button class="icon-btn" data-act="back" title="Back (Esc)">←</button>` : ""}
+        <span class="kind" style="background:${color}22;color:${color}">${n.type === "pi" ? "lab" : escapeHTML(n.type)}</span>
+        <span class="spacer"></span>
+        ${visible.has(n.id) ? `<button class="icon-btn" data-act="zoom" data-id="${escapeHTML(n.id)}" title="Zoom to">⌖</button>` : ""}
+        <button class="icon-btn" data-act="close" title="Close (Esc)">×</button></div>`;
     const name = escapeHTML(n.label);
+    const link = (id, label) => graphHas(id)
+      ? `<a class="lnk" data-act="open" data-id="${escapeHTML(id)}">${escapeHTML(label)}</a>` : escapeHTML(label);
+    const labRow = (pid, note) => {
+      const p = byId.get(pid); if (!p) return "";
+      const rec = tagRec(pid);
+      const top = rec ? Object.entries({ ...rec.o, ...rec.m }).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([t]) => tagLabel.get(t) || t).join(", ") : "";
+      return `<li><span class="swatch" style="background:${STATUS_COLORS[p.status]}"></span>${link(pid, p.label)}
+        <span class="muted">${note || ""}${top ? ` · ${escapeHTML(top)}` : ""}</span></li>`;
+    };
+    const capped = (items, k, cls) => items.length <= k ? `<ul class="${cls}">${items.join("")}</ul>`
+      : `<ul class="${cls}">${items.slice(0, k).join("")}</ul><ul class="${cls}" hidden>${items.slice(k).join("")}</ul><span class="more" data-act="more">show all ${items.length}</span>`;
 
     if (n.type === "institution") {
-      const ids = piByInst.get(n.id) || [];
-      const active = ids.filter((id) => byId.get(id).status === "active").length;
-      return `${close}${kind}<h2>${name}</h2>
-        <div class="meta-row"><span>Type</span><span>${escapeHTML(n.instType || "—")}</span></div>
-        <div class="meta-row"><span>Place</span><span>${escapeHTML(placeOf(n) || n.cc || "—")}</span></div>
+      const here = [...(labsAt.get(n.id) || [])].map((id) => byId.get(id)).filter(Boolean)
+        .sort((a, b) => (a.status !== "active") - (b.status !== "active") || b.works - a.works);
+      const co = [...(coByInst.get(n.id) || [])].sort((a, b) => b[1] - a[1]);
+      const active = here.filter((p) => p.status === "active").length;
+      return `${head}<h2>${name}</h2>
+        <div class="place">${escapeHTML([n.instType, placeOf(n)].filter(Boolean).join(" · "))}${byId.has(n.id) ? "" : ` <span class="warn">not a node in the graph</span>`}</div>
+        <div class="facts">
+          <div><b>${fmtInt(here.length)}</b><span>labs here</span></div>
+          <div><b>${fmtInt(active)}</b><span>active</span></div>
+          <div><b>${fmtInt(co.length)}</b><span>co-author affiliated</span></div>
+        </div>
+        <div class="btn-row">
+          ${here.length ? `<button class="btn sm" data-act="labs-here" data-id="${escapeHTML(n.id)}">Show labs here</button>` : ""}
+          ${co.length ? `<button class="btn sm" data-act="labs-here-co" data-id="${escapeHTML(n.id)}">+ co-author affiliated</button>` : ""}
+        </div>
         ${n.region ? `<div class="meta-row"><span>Region</span><span>${escapeHTML(n.region)}</span></div>` : ""}
-        <div class="meta-row"><span>Labs here</span><span>${fmtInt(ids.length)}</span></div>
-        <div class="meta-row"><span>Currently active</span><span>${fmtInt(active)}</span></div>
-        ${n.homepage ? `<p style="margin-top:12px"><a href="${escapeHTML(n.homepage)}" target="_blank" rel="noopener">Institution website ↗</a></p>` : ""}
-        ${n.ror ? `<p><a href="${escapeHTML(n.ror)}" target="_blank" rel="noopener">ROR record ↗</a></p>` : ""}
-        <p><a href="https://openalex.org/${escapeHTML(n.id)}" target="_blank" rel="noopener">OpenAlex ↗</a></p>`;
+        <p class="links">
+          ${n.homepage ? `<a href="${escapeHTML(n.homepage)}" target="_blank" rel="noopener">Website ↗</a>` : ""}
+          ${n.ror ? `<a href="${escapeHTML(n.ror)}" target="_blank" rel="noopener">ROR ↗</a>` : ""}
+          <a href="https://openalex.org/${escapeHTML(n.id)}" target="_blank" rel="noopener">OpenAlex ↗</a></p>
+        ${here.length ? `<details open><summary class="section-h">Labs here (${fmtInt(here.length)})</summary>
+          ${capped(here.map((p) => labRow(p.id, `${fmtInt(p.works)} papers`)), 25, "labs")}</details>` : ""}
+        ${co.length ? `<details ${here.length ? "" : "open"}><summary class="section-h">Co-author affiliations here (${fmtInt(co.length)})</summary>
+          <p class="note">Labs based elsewhere whose first- or middle-author papers ${win} list this institution (≥ 2 papers).</p>
+          ${capped(co.map(([pid, k]) => labRow(pid, `${k} papers`)), 25, "labs")}</details>` : ""}`;
     }
 
     if (n.type === "funder") {
-      return `${close}${kind}<h2>${name}</h2>
-        <p style="color:var(--muted);margin-top:10px">Funder, from OpenAlex grant records.</p>
-        <p><a href="https://openalex.org/${escapeHTML(n.id)}" target="_blank" rel="noopener">OpenAlex ↗</a></p>`;
+      return `${head}<h2>${name}</h2>
+        <p class="muted" style="margin-top:10px">Funder, from OpenAlex grant records.</p>
+        <p class="links"><a href="https://openalex.org/${escapeHTML(n.id)}" target="_blank" rel="noopener">OpenAlex ↗</a></p>`;
     }
 
     const prim = byId.get(n.institution);
     const rec = tagRec(n.id);
-    const win = tags ? `${tags.meta.years[0]}–${tags.meta.years.at(-1)}` : "";
-    const orgChips = rec ? tagChipsHTML({ o: rec.o }, tagLabel, 8) : "";
-    const methChips = rec ? tagChipsHTML({ m: rec.m }, tagLabel, 12) : "";
-    const none = `<span class="facet-hint">${tags ? `no tagged works ${win}` : "no tags file"}</span>`;
+    const none = `<span class="facet-hint">${tags ? `no tagged papers ${win}` : "no tags file"}</span>`;
+    const grouped = (obj) => {
+      const byCat = new Map();
+      for (const [t, k] of Object.entries(obj || {})) {
+        const cat = tagCat.get(t) || "Other";
+        if (!byCat.has(cat)) byCat.set(cat, []);
+        byCat.get(cat).push([t, k]);
+      }
+      return [...byCat.entries()].sort((a, b) => Math.max(...b[1].map((x) => x[1])) - Math.max(...a[1].map((x) => x[1])))
+        .map(([cat, list]) => `<div class="tag-cat"><span class="tag-cat-h">${escapeHTML(cat)}</span>${list.sort((a, b) => b[1] - a[1])
+          .map(([t, k]) => `<span class="tag">${escapeHTML(tagLabel.get(t) || t)} <span class="n">×${k}</span></span>`).join("")}</div>`).join("");
+    };
 
-    // The full affiliation history lives on the node, so the graph can draw
-    // only current edges while the panel still shows the whole career.
     const affs = (n.institutions || []).map((a) => {
       const inst = byId.get(a.id);
-      return `<li>${a.current ? "<b>" : ""}${escapeHTML(inst ? inst.label : a.id)}${a.current ? "</b>" : ""}
-        <span style="color:var(--muted)">(${a.firstYear ?? "?"}–${a.lastYear ?? "?"}, ${fmtInt(a.works)} works)</span>
-        ${a.current ? '<span class="tag">current</span>' : ""}</li>`;
+      return `<li>${a.current ? "<b>" : ""}${link(a.id, inst ? inst.label : a.id)}${a.current ? "</b>" : ""}
+        <span class="muted">${a.firstYear ?? "?"}–${a.lastYear ?? "?"} · ${fmtInt(a.works)} papers${inst && placeOf(inst) ? " · " + escapeHTML(placeOf(inst)) : ""}</span>
+        ${a.primary ? '<span class="tag">primary</span>' : a.current ? '<span class="tag">current</span>' : ""}</li>`;
     }).join("");
+
+    const coList = ((rec && rec.ca) || []).map(([iid, k, y0, y1, merged]) => {
+      const inst = instNode(iid);
+      return `<li>${link(iid, instLabel(iid))}
+        <span class="muted">${k} papers · ${y0 === y1 ? y0 : `${y0}–${y1}`}${inst && placeOf(inst) ? " · " + escapeHTML(placeOf(inst)) : ""}</span>
+        ${merged ? `<span class="warn" title="${merged} of these papers give one combined affiliation string for several institutions, so this link may belong to a co-author">${merged}/${k} from a combined affiliation string</span>` : ""}</li>`;
+    }).join("");
+
     const funders = (n.funders || []).map((f) => {
       const fn = byId.get(f.id);
-      return `<li>${escapeHTML(fn ? fn.label : f.id)} <span style="color:var(--muted)">(${fmtInt(f.works)})</span></li>`;
+      return `<li>${escapeHTML(fn ? fn.label : f.id)} <span class="muted">(${fmtInt(f.works)} papers)</span></li>`;
     }).join("");
 
-    // Publications: matching titles first, then newest first.
     let pubs = "";
-    const wl = works && works.pis[n.id];
-    if (wl && wl.length) {
+    const wl = (works && works.pis[n.id]) || [];
+    if (wl.length) {
       const hit = (w) => terms.length && terms.some((t) => w[1].toLowerCase().includes(t));
-      const ordered = [...wl].sort((a, b) => (hit(b) - hit(a)) || (b[0] - a[0]));
       const mark = (s) => { let out = escapeHTML(s); for (const t of terms) out = out.replace(new RegExp(`(${t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "ig"), "<mark>$1</mark>"); return out; };
-      const li = (w) => `<li><span class="yr">${w[0] || ""}</span>${mark(w[1])}` +
-        (w[2].length ? `<div class="tags">${w[2].map((t) => `<span class="tag ${t in (rec?.o || {}) ? "tag-org" : "tag-meth"}">${escapeHTML(tagLabel.get(t) || t)}</span>`).join("")}</div>` : "") + `</li>`;
-      const first = ordered.slice(0, 15).map(li).join("");
-      const rest = ordered.slice(15).map(li).join("");
-      pubs = `<div class="section-h">Publications ${win} <span style="color:var(--muted);text-transform:none;letter-spacing:0">(${fmtInt(wl.length)} last-authored${works.meta.capPerPI && wl.length >= works.meta.capPerPI ? ", most recent" : ""})</span></div>
-        <ul class="pubs">${first}</ul>` +
-        (rest ? `<ul class="pubs" hidden>${rest}</ul><span class="more" onclick="this.previousElementSibling.hidden=false;this.remove()">show all ${fmtInt(wl.length)}</span>` : "");
+      const POS = { f: "first author", m: "co-author" };
+      const li = (w) => `<li data-t="${escapeHTML(w[1].toLowerCase())}"><span class="yr">${w[5] || w[0] || ""}</span>` +
+        (w[3] ? `<a href="https://openalex.org/${escapeHTML(w[3])}" target="_blank" rel="noopener">${mark(w[1])}</a>` : mark(w[1])) +
+        (POS[w[4]] ? ` <span class="pos">${POS[w[4]]}</span>` : "") +
+        ((w[2] || []).length ? `<div class="tags">${w[2].map((t) => `<span class="tag">${escapeHTML(tagLabel.get(t) || t)}</span>`).join("")}</div>` : "") + `</li>`;
+      const section = (rows, title, note) => {
+        if (!rows.length) return "";
+        const ordered = [...rows].sort((a, b) => (hit(b) - hit(a)) || (b[0] - a[0]));
+        return `<details open><summary class="section-h">${title}</summary>
+          ${note ? `<p class="note">${note}</p>` : ""}
+          ${rows.length > 8 ? `<input class="pub-filter search-input" placeholder="Filter titles…" autocomplete="off" />` : ""}
+          <ul class="pubs">${ordered.slice(0, 12).map(li).join("")}</ul>` +
+          (ordered.length > 12 ? `<ul class="pubs" hidden>${ordered.slice(12).map(li).join("")}</ul>` +
+            `<span class="more pubs-more" data-act="more">show all ${fmtInt(rows.length)}</span>` : "") + `</details>`;
+      };
+      const led = wl.filter((w) => (w[4] || "l") === "l"), co = wl.filter((w) => w[4] && w[4] !== "l");
+      const coTotal = (works.coTotals && works.coTotals[n.id]) || co.length;
+      pubs = section(led, `Led by this lab ${win} (${fmtInt(led.length)} last-authored)`, "") +
+             section(co, `Co-authored ${win} (${co.length < coTotal ? `${fmtInt(co.length)} most recent of ${fmtInt(coTotal)}` : fmtInt(coTotal)})`,
+                     "Papers the PI contributed to without being last author. Method and model-system tags come from led papers only.");
     }
 
-    return `${close}${kind}<h2>${name}</h2>
-      <div class="place">${escapeHTML(prim ? prim.label : "")}${prim && placeOf(prim) ? " · " + escapeHTML(placeOf(prim)) : ""}</div>
-      <div class="meta-row"><span>Status</span><span style="color:${color}">${escapeHTML(STATUS_LABELS[n.status] || "?")}</span></div>
-      <div class="meta-row"><span>Active years</span><span>${yearSpan(n)}</span></div>
-      <div class="meta-row"><span>Last-authored</span><span>${fmtInt(n.works)}</span></div>
-      <div class="meta-row"><span>Corresponding</span><span>${fmtInt(n.corresponding)}</span></div>
-      <div class="meta-row"><span>Citations</span><span>${fmtInt(n.citations)}</span></div>
-      <div class="section-h">Model systems ${win}</div>
-      <div class="tags">${orgChips || none}</div>
-      <div class="section-h">Methods ${win}</div>
-      <div class="tags">${methChips || none}</div>
-      <div class="section-h">Research topics</div>
-      <div class="tags">${(n.topics || []).map((t) => `<span class="tag">${escapeHTML(t)}</span>`).join("") || "—"}</div>
+    const webQuery = encodeURIComponent(`${n.label} ${prim ? prim.label : ""} lab`);
+    const scholarQuery = encodeURIComponent(`"${n.label}" ${prim ? prim.label : ""}`);
+    return `${head}<h2>${name}</h2>
+      <div class="place">${prim ? link(prim.id, prim.label) : ""}${prim && placeOf(prim) ? " · " + escapeHTML(placeOf(prim)) : ""}</div>
+      <div class="facts">
+        <div><b style="color:${color}">${escapeHTML(STATUS_LABELS[n.status] || "?")}</b><span>${yearSpan(n)}</span></div>
+        <div><b>${fmtInt(n.works)}</b><span>last-authored</span></div>
+        <div><b>${fmtInt(n.citations)}</b><span>citations</span></div>
+      </div>
+      ${visible.has(n.id) ? "" : `<div class="btn-row"><button class="btn sm" data-act="pin" data-id="${escapeHTML(n.id)}">Add to graph</button></div>`}
+      <details open><summary class="section-h">Model systems ${win}</summary><div class="tag-groups">${rec && Object.keys(rec.o).length ? grouped(rec.o) : none}</div></details>
+      <details open><summary class="section-h">Methods ${win}</summary><div class="tag-groups">${rec && Object.keys(rec.m).length ? grouped(rec.m) : none}</div></details>
+      <details open><summary class="section-h">Affiliations</summary>${affs ? `<ul class="affs">${affs}</ul>` : `<p class="muted">None recorded.</p>`}</details>
+      ${coList ? `<details open><summary class="section-h">Co-author affiliations</summary>
+        <p class="note">Institutions on this PI's first- or middle-author papers ${win} (≥ 2 papers) that are not among their own affiliations. Shown for context; never used to place the lab.</p>
+        <ul class="affs co">${coList}</ul></details>` : ""}
       ${pubs}
-      <div class="section-h">Affiliations</div>
-      ${affs ? `<ul>${affs}</ul>` : `<p style="color:var(--muted)">None recorded.</p>`}
-      ${funders ? `<div class="section-h">Funders</div><ul>${funders}</ul>` : ""}
-      <p style="margin-top:10px"><a href="https://openalex.org/${escapeHTML(n.id)}" target="_blank" rel="noopener">OpenAlex profile ↗</a></p>`;
+      <details><summary class="section-h">Research topics</summary><div class="tags">${(n.topics || []).map((t) => `<span class="tag">${escapeHTML(t)}</span>`).join("") || "—"}</div></details>
+      ${funders ? `<details><summary class="section-h">Funders</summary><ul>${funders}</ul></details>` : ""}
+      <p class="links">
+        <a href="https://openalex.org/${escapeHTML(n.id)}" target="_blank" rel="noopener">OpenAlex profile ↗</a>
+        <a href="https://scholar.google.com/scholar?q=${scholarQuery}" target="_blank" rel="noopener">Google Scholar ↗</a>
+        <a href="https://www.google.com/search?q=${webQuery}" target="_blank" rel="noopener">Find lab website ↗</a></p>`;
   }
   </script>
 </body>
