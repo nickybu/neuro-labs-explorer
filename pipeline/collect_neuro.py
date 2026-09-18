@@ -50,9 +50,27 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 DEFAULT_OUT = os.path.join(ROOT, "data", "graph_neuro.json")
 
-# OpenAlex polite pool: identify ourselves on every request.
-MAILTO = "you@example.com"
 API_ROOT = "https://api.openalex.org"
+
+
+def _load_local(name: str, env: str) -> str:
+    """Read a local-only setting from an env var or an untracked file.
+
+    Keeps personal details (contact email, API key) out of the repository.
+    """
+    val = os.environ.get(env, "").strip()
+    if val:
+        return val
+    try:
+        with open(os.path.join(ROOT, name)) as f:
+            return f.read().strip()
+    except OSError:
+        return ""
+
+
+# OpenAlex polite pool: a contact address gets faster, more reliable service.
+# Set OPENALEX_MAILTO or put the address in .openalex_mailto (both untracked).
+MAILTO = _load_local(".openalex_mailto", "OPENALEX_MAILTO")
 CACHE = os.path.join(ROOT, "data", "cache")
 
 # --- collection window / scope -------------------------------------------
@@ -125,18 +143,7 @@ class BudgetExhausted(RuntimeError):
 # Optional API key. Anonymous callers get $0.10/day; a free key raises it to $1/day.
 # Never hard-code it here - export OPENALEX_API_KEY, or put the key on its own
 # in a `.openalex_key` file at the project root (read below, never logged).
-def _load_api_key() -> str:
-    key = os.environ.get("OPENALEX_API_KEY", "").strip()
-    if key:
-        return key
-    try:
-        with open(os.path.join(ROOT, ".openalex_key")) as f:
-            return f.read().strip()
-    except OSError:
-        return ""
-
-
-API_KEY = _load_api_key()
+API_KEY = _load_local(".openalex_key", "OPENALEX_API_KEY")
 
 
 def _safe(url: str) -> str:
@@ -150,7 +157,9 @@ def _get(path: str, params: dict) -> dict:
     Raises BudgetExhausted on 429 so callers can checkpoint and resume tomorrow
     rather than losing the crawl.
     """
-    params = {**params, "mailto": MAILTO}
+    params = {**params}
+    if MAILTO:
+        params["mailto"] = MAILTO
     if API_KEY:
         params["api_key"] = API_KEY
     url = f"{API_ROOT}/{path}?{urllib.parse.urlencode(params)}"
@@ -158,7 +167,7 @@ def _get(path: str, params: dict) -> dict:
     for attempt in range(5):
         try:
             req = urllib.request.Request(
-                url, headers={"User-Agent": f"neuro-labs-explorer ({MAILTO})"})
+                url, headers={"User-Agent": f"neuro-labs-explorer ({MAILTO or 'anonymous'})"})
             with urllib.request.urlopen(req, timeout=90) as resp:
                 return json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
@@ -177,7 +186,9 @@ def _get(path: str, params: dict) -> dict:
 
 def _budget() -> tuple[int, float]:
     """Remaining credits and USD on the current key, via a cheap singleton call."""
-    url = f"{API_ROOT}/works/W2741809807?select=id&mailto={MAILTO}"
+    url = f"{API_ROOT}/works/W2741809807?select=id"
+    if MAILTO:
+        url += f"&mailto={MAILTO}"
     if API_KEY:
         url += f"&api_key={API_KEY}"
     try:

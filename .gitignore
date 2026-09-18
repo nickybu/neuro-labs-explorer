@@ -1,5 +1,6 @@
-# Secrets
+# Secrets and personal settings
 .openalex_key
+.openalex_mailto
 
 # Local tooling
 .claude/settings.local.json

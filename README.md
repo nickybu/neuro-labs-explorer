@@ -84,7 +84,10 @@ fabricated names, affiliations or histories. No websites are scraped.
 All crawls are resumable: every page is appended to a gzip cache with the cursor
 checkpointed, so a daily-budget 429 costs one page and re-running the same
 command continues. Set your key in `OPENALEX_API_KEY` or in a `.openalex_key`
-file at the project root (free key ≈ 10,000 requests/day).
+file at the project root (free key ≈ 10,000 requests/day). For OpenAlex's
+polite pool, set `OPENALEX_MAILTO` or put a contact address in
+`.openalex_mailto`. Both files are untracked, so no personal details live in
+the repository.
 
 ```bash
 # 1. PI graph (worldwide crawl once, region chosen at build time)
