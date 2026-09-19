@@ -104,11 +104,11 @@
               <div id="graph"></div>
               <div class="graph-loading" id="graphLoading" hidden>building graph…</div>
               <div class="tooltip" id="tooltip"></div>
-              <div class="legend-bar">
+              <div class="legend-bar" id="legendBar">
                 <span><i class="dot" style="background:var(--inst)"></i>Institution</span>
-                <span><i class="dot" style="background:#f0883e"></i>Active</span>
-                <span><i class="dot" style="background:#b9873f"></i>Winding down</span>
-                <span><i class="dot" style="background:#6e7681"></i>Inactive</span>
+                <span data-status="active"><i class="dot" style="background:#f0883e"></i>Active</span>
+                <span data-status="winding_down"><i class="dot" style="background:#b9873f"></i>Winding down</span>
+                <span data-status="inactive"><i class="dot" style="background:#6e7681"></i>Inactive</span>
                 <span><i class="bar" style="background:var(--career)"></i>Affiliation</span>
                 <span><i class="bar" style="background:var(--co)"></i>Co-author</span>
               </div>
@@ -991,6 +991,10 @@
                     `<span class="swatch" style="background:${STATUS_COLORS[key]}"></span> ` +
                     `${label} <span style="color:var(--muted)">(${fmtInt(n)})</span>`;
       statusBox.appendChild(l);
+    }
+    // The legend must not advertise a status this build holds no labs for.
+    for (const el of document.querySelectorAll("#legendBar [data-status]")) {
+      if (!presentStatuses.includes(el.dataset.status)) el.remove();
     }
     const syncStatus = () => statusBox.querySelectorAll("input").forEach((b) => { b.checked = q.statuses.has(b.dataset.status); });
     statusBox.addEventListener("change", (e) => {
