@@ -25,9 +25,12 @@ const STATUS_LABELS = {
 const CAREER_COLOR = "#db61a2";
 const FUNDING_COLOR = "#6f42c1";
 
-// serve.py transparently swaps in the pre-compressed .gz sibling, so this
-// stays a plain .json path.
+// Two layouts: locally the page sits in web/ with data/ a level up; on the
+// deployed site the page is at the root with data/ beside it. First hit wins.
+// serve.py swaps in the pre-compressed .gz sibling locally, and GitHub Pages
+// gzips the plain .json for us, so these stay plain .json paths.
 const DATASET_PATHS = [
+  "data/graph_neuro.json",
   "../data/graph_neuro.json",
 ];
 
@@ -81,21 +84,23 @@ function escapeHTML(s) {
 // tags_neuro.json : per-PI method / model-system tag counts (pipeline/enrich_text.py tag)
 // works_neuro.json: per-PI [year, title, [tagIds]] list for the same window
 // ---------------------------------------------------------------------------
-const TAGS_PATH = "../data/tags_neuro.json";
-const WORKS_PATH = "../data/works_neuro.json";
+const TAGS_PATHS = ["data/tags_neuro.json", "../data/tags_neuro.json"];
+const WORKS_PATHS = ["data/works_neuro.json", "../data/works_neuro.json"];
 
-async function loadOptionalJSON(path) {
-  try {
-    const res = await fetch(path);
-    if (!res.ok) return null;
-    return await res.json();
-  } catch (e) {
-    console.warn(`optional dataset ${path} not loaded: ${e.message}`);
-    return null;
+async function loadOptionalJSON(paths) {
+  for (const path of paths) {
+    try {
+      const res = await fetch(path);
+      if (!res.ok) continue;
+      return await res.json();
+    } catch (e) {
+      console.warn(`optional dataset ${path} not loaded: ${e.message}`);
+    }
   }
+  return null;
 }
-const loadTags = () => loadOptionalJSON(TAGS_PATH);
-const loadWorks = () => loadOptionalJSON(WORKS_PATH);
+const loadTags = () => loadOptionalJSON(TAGS_PATHS);
+const loadWorks = () => loadOptionalJSON(WORKS_PATHS);
 
 // Fallback only: institution nodes carry a full `country` name once
 // fetch_institutions.py has merged geo; this covers nodes without a record.

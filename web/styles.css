@@ -335,3 +335,5 @@ mark { background: #e3b34133; color: #f0c674; border-radius: 3px; padding: 0 2px
 .inst-row .x { cursor: pointer; color: var(--muted); font-weight: 400; padding: 0 4px; }
 .inst-row .x:hover { color: var(--text); }
 .detail .pubs .pos { font-size: 10px; color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 0 5px; margin-left: 4px; white-space: nowrap; }
+#worksNote { font-size: 11px; font-style: italic; }
+#worksNote:empty { display: none; }

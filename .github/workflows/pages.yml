@@ -1,0 +1,63 @@
+# Publish the explorer to GitHub Pages at https://nickybu.blog/neuro-labs-explorer/
+#
+# The built datasets are ~100 MB, so they live in a tagged Release rather than
+# in git, and are downloaded here at deploy time. Files are served as plain
+# .json: GitHub Pages gzips them on the fly (~3x), which a pre-gzipped .gz
+# would forfeit.
+#
+# Rebuild the data locally with:
+#   python3 scripts/build_site.py
+#   tar czf site-data.tar.gz -C site data
+#   gh release upload site-data-v1 site-data.tar.gz --clobber
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths: ["web/**", ".github/workflows/pages.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch datasets from the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download site-data-v1 --pattern 'site-data.tar.gz' --clobber
+          mkdir -p site
+          tar xzf site-data.tar.gz -C site
+          ls -la site/data
+
+      - name: Assemble the site
+        run: |
+          cp -r web/. site/
+          rm -f site/search.html.orig
+          touch site/.nojekyll
+          du -sh site site/data
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -63,6 +63,7 @@
         <div class="pills" id="pills"></div>
         <div class="rp-head">
           <span id="resultCount">Search to begin</span>
+          <span id="worksNote" class="muted">loading publications…</span>
           <span class="spacer"></span>
           <button class="btn sm" id="graphBtn" hidden>Show graph</button>
           <select id="sortSel" class="sort-sel" title="Sort results">
@@ -136,9 +137,12 @@
   <script>
   (async function () {
     const statsEl = document.getElementById("stats");
-    let data, tags, works;
-    try { [data, tags, works] = await Promise.all([loadData(), loadTags(), loadWorks()]); }
+    let data, tags, works = null;
+    try { [data, tags] = await Promise.all([loadData(), loadTags()]); }
     catch (e) { statsEl.textContent = e.message; return; }
+    // Publications are the heaviest file and nothing on the first screen needs
+    // them, so they arrive after the app is already usable.
+    const worksPromise = loadWorks();
 
     // Every node needs coordinates, not just the first one - a partially laid
     // out dataset used to slip through and feed NaN into Sigma mid-render.
@@ -587,7 +591,7 @@
     // spreading the stored layout changes nothing on screen; nudging nodes
     // apart in pixels is the only fix that survives that normalisation.
     // ------------------------------------------------------------------
-    const SPACING_MAX_NODES = 3000, SPACING_PAD = 1.5, SPACING_MAX_PUSH = 48, SPACING_ITER = 60;
+    const SPACING_MAX_NODES = 3000, SPACING_PAD = 1.5;
     let nodeOffset = new Map();                          // id -> [dx, dy] in graph units
     let displaced = new Set();                           // nodes whose attributes we moved
     let spacingTimer = null;
@@ -613,8 +617,11 @@
       const n = ids.length;
       if (!n) { if (had) applyOffsets(); return; }
       const ox = new Float64Array(n), oy = new Float64Array(n);
+      // Denser results need more room and more passes to untangle.
+      const iterations = Math.min(160, Math.max(80, 50 + Math.round(n / 8)));
+      const maxPush = Math.min(90, Math.max(48, 40 + Math.round(n / 20)));
       const cell = 2 * Math.max(...pr) + SPACING_PAD + 2;
-      for (let it = 0; it < SPACING_ITER; it++) {
+      for (let it = 0; it < iterations; it++) {
         const grid = new Map();
         for (let i = 0; i < n; i++) {
           const k = Math.floor((px[i] + ox[i]) / cell) + "," + Math.floor((py[i] + oy[i]) / cell);
@@ -663,7 +670,7 @@
         let dx = ox[i], dy = oy[i];
         const m = Math.hypot(dx, dy);
         if (m < 0.05) continue;
-        if (m > SPACING_MAX_PUSH) { dx *= SPACING_MAX_PUSH / m; dy *= SPACING_MAX_PUSH / m; }
+        if (m > maxPush) { dx *= maxPush / m; dy *= maxPush / m; }
         nodeOffset.set(ids[i], [dx * ux, dy * uy]);
       }
       applyOffsets();
@@ -972,7 +979,11 @@
     document.getElementById("clearInst").addEventListener("click", () => setInstFacet("", false));
 
     const statusBox = document.getElementById("statusFilters");
-    for (const [key, label] of Object.entries(STATUS_LABELS)) {
+    // A trimmed build (the public site ships active labs only) must not offer a
+    // status it holds no labs for, or the filter would return nothing.
+    const presentStatuses = Object.keys(STATUS_LABELS).filter((k) => ((c.pis_by_status || {})[k] || 0) > 0);
+    for (const key of presentStatuses) {
+      const label = STATUS_LABELS[key];
       const n = (c.pis_by_status || {})[key] || 0;
       const l = document.createElement("label");
       l.className = "check";
@@ -1121,6 +1132,7 @@
           <span class="rc-cta">Show in graph →</span></div>
       </article>`;
     }
+    const worksNote = (msg) => { document.getElementById("worksNote").textContent = msg; };
     function renderResults() {
       const count = document.getElementById("resultCount");
       const graphBtn = document.getElementById("graphBtn");
@@ -1300,7 +1312,11 @@
       q.pinned = new Set((p.get("pin") || "").split(",").filter((id) => byId.has(id)));
       q.sort = p.get("sort") || "relevance"; document.getElementById("sortSel").value = q.sort;
       q.minWorks = Math.max(2, +p.get("min") || 2); mw.value = q.minWorks; mwVal.textContent = q.minWorks;
-      if (p.get("s")) { q.statuses = new Set(p.get("s").split(",").filter((s) => STATUS_LABELS[s])); syncStatus(); }
+      if (p.get("s")) {                                  // ignore statuses this build lacks
+        const want = p.get("s").split(",").filter((x) => presentStatuses.includes(x));
+        q.statuses = new Set(want.length ? want : presentStatuses.slice(0, 1));
+        syncStatus();
+      }
       syncChipStates();
       q.sel = p.get("sel") || "";
       return p.get("graph") === "1" || q.sel ? (q.sel || result[0] || true) : null;
@@ -1313,7 +1329,23 @@
     window.addEventListener("hashchange", () => { if (!writingHash) openHash(); });
 
     await openHash();
-    window.__nle = { q, runQuery, openNode, openGraph, closeGraph, selectCard, pickNode,
+
+    // When the publications file lands, add paper titles to the search index
+    // and refresh whatever is on screen.
+    worksPromise.then((w) => {
+      if (!w) { worksNote(""); return; }
+      works = w;
+      for (const n of piNodes) {
+        const wl = works.pis[n.id];
+        if (!wl || !wl.length) continue;
+        hay.set(n.id, hay.get(n.id) + " \n " + wl.map((x) => x[1]).join(" \n ").toLowerCase());
+      }
+      worksNote("");
+      if (hasQuery()) runQuery({ fit: false });
+      if (detailStack.length) renderDetail();
+    });
+
+    window.__nle = { q, runQuery, openNode, openGraph, closeGraph, selectCard, pickNode, worksLoaded: () => !!works,
                      fitToVisible, relaxOverlaps, offsets: () => nodeOffset,
                      buildSuggestions, acceptSuggestion, openLegend, closeLegend, sgRows: () => sgRows,
                      get renderer() { return renderer; }, visible: () => visible, detailStack, result: () => result };
@@ -1445,7 +1477,8 @@
       };
       const led = wl.filter((w) => (w[4] || "l") === "l"), co = wl.filter((w) => w[4] && w[4] !== "l");
       const coTotal = (works.coTotals && works.coTotals[n.id]) || co.length;
-      pubs = section(led, `Led by this lab ${win} (${fmtInt(led.length)} last-authored)`, "") +
+      const ledTotal = (works.ledTotals && works.ledTotals[n.id]) || led.length;
+      pubs = section(led, `Led by this lab ${win} (${led.length < ledTotal ? `${fmtInt(led.length)} most recent of ${fmtInt(ledTotal)}` : `${fmtInt(ledTotal)} last-authored`})`, "") +
              section(co, `Co-authored ${win} (${co.length < coTotal ? `${fmtInt(co.length)} most recent of ${fmtInt(coTotal)}` : fmtInt(coTotal)})`,
                      "Papers the PI contributed to without being last author. Method and model-system tags come from led papers only.");
     }

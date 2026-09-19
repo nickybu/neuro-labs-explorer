@@ -14,6 +14,9 @@ node_modules/
 # data/backups/ holds dated snapshots of the built outputs.
 data/cache/
 data/backups/
+# assembled by scripts/build_site.py and the Pages workflow
+site/
+site-data.tar.gz
 data/*.json
 data/*.json.gz
 *.tmp

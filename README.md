@@ -151,6 +151,31 @@ heals its own part file on resume. For a finished slice, run
 last sync-flush marker, because decoding past a tear yields phantom records
 that still parse as valid JSON.
 
+## Deploying to GitHub Pages
+
+The app is published at <https://nickybu.blog/neuro-labs-explorer/>. The site is
+a separate GitHub Pages deployment from the blog, so it cannot affect the
+blog's build or pages.
+
+```bash
+python3 scripts/build_site.py            # -> site/data/*.json (active labs only)
+tar czf site-data.tar.gz -C site data
+gh release upload site-data-v1 site-data.tar.gz --clobber
+git push                                  # .github/workflows/pages.yml deploys
+```
+
+The trimmed build keeps **active labs only** (43,545 of 106,709), rounds
+coordinates to integers, drops fields the UI never reads, and caps publication
+lists (10 led, 2 co-authored per lab, with the true totals kept). That is
+99 MB on disk but about **23 MB over the wire**, of which the first screen needs
+only the graph and tags (~8.5 MB); publications load afterwards and then make
+paper titles searchable.
+
+Data lives in a tagged **Release**, not in git: a 52 MB file would bloat every
+clone, and GitHub rejects files over 100 MB. Files are served as plain `.json`
+because GitHub Pages gzips them on the fly (~3x); a pre-gzipped `.gz` would be
+served as an opaque binary instead.
+
 ## Layout
 
 ```
@@ -165,5 +190,7 @@ scripts/layout.mjs            offline ForceAtlas2, bakes x/y into the graph
 data/                         graph_neuro.json (+.gz), tags_neuro.json, works_neuro.json, cache/, backups/
 docs/plans/                   written-up plans for data-quality work
 web/                          index.html (graph), search.html, data.js, styles.css, vendor/
+scripts/build_site.py         trimmed dataset for the public site
+.github/workflows/pages.yml   GitHub Pages deployment
 serve.py                      threaded static server that serves pre-built .gz siblings
 ```
